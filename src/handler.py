@@ -27,4 +27,4 @@ class StoreHandler(AuthenticatedHandler):
         except StoreNotFound:
             raise HTTPError(404, "Store not found")
 
-        self.write(ujson.dumps(store_data, ensure_ascii=False))
+        self.dumps(store_data)

@@ -454,7 +454,7 @@ class ContentsController(a.AdminController):
         return [
             a.breadcrumbs([], "Contents"),
             a.links("Items", [
-                a.link("content", item.name, icon="tree-deciduous", content_id=item.content_id)
+                a.link("content", item.name, icon="paper-plane", content_id=item.content_id)
                 for item in data["items"]
                 ]),
             a.links("Navigate", [
@@ -1254,7 +1254,7 @@ class RootAdminController(a.AdminController):
     def render(self, data):
         return [
             a.links("Store service", [
-                a.link("contents", "Edit contents", icon="tree-deciduous"),
+                a.link("contents", "Edit contents", icon="paper-plane"),
                 a.link("stores", "Edit stores", icon="home"),
                 a.link("categories", "Edit categories", icon="list-alt"),
                 a.link("currencies", "Edit currencies", icon="bitcoin"),
