@@ -194,7 +194,7 @@ class CategoryCommonController(a.AdminController):
             }, data=data),
             a.links("Navigate", [
                 a.link("categories", "Go back"),
-                a.link("https://github.com/jdorn/json-editor#default-properties", "See docs", icon="book")
+                a.link("https://spacetelescope.github.io/understanding-json-schema/index.html", "See docs", icon="book")
             ])
         ]
 
@@ -270,7 +270,7 @@ class CategoryController(a.AdminController):
             a.links("Navigate", [
                 a.link("categories", "Go back"),
                 a.link("category_common", "Edit common scheme"),
-                a.link("https://github.com/jdorn/json-editor#default-properties", "See docs", icon="book")
+                a.link("https://spacetelescope.github.io/understanding-json-schema/index.html", "See docs", icon="book")
             ])
         ]
 
@@ -641,7 +641,7 @@ class NewCategoryController(a.AdminController):
             }, data=data),
             a.links("Navigate", [
                 a.link("categories", "Go back"),
-                a.link("https://github.com/jdorn/json-editor#default-properties", "See docs", icon="book")
+                a.link("https://spacetelescope.github.io/understanding-json-schema/index.html", "See docs", icon="book")
             ])
         ]
 
