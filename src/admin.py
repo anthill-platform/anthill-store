@@ -158,10 +158,7 @@ class CategoriesController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -198,10 +195,7 @@ class CategoryCommonController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
     @coroutine
@@ -274,10 +268,7 @@ class CategoryController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
     @coroutine
@@ -354,10 +345,7 @@ class ChooseCategoryController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -409,10 +397,7 @@ class ContentController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
     @coroutine
@@ -463,10 +448,7 @@ class ContentsController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -496,10 +478,7 @@ class CurrenciesController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -557,10 +536,7 @@ class CurrencyController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
     @coroutine
@@ -645,10 +621,7 @@ class NewCategoryController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -689,10 +662,7 @@ class NewContentController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -732,10 +702,7 @@ class NewCurrencyController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -851,10 +818,7 @@ class NewPackComponentController(a.AdminController):
 
         return result
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
     @coroutine
@@ -987,10 +951,7 @@ class NewStoreComponentController(a.AdminController):
 
         return result
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
     @coroutine
@@ -1042,12 +1003,8 @@ class NewStoreController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
+    def access_scopes(self):
         return ["store_admin"]
-
-    def scopes_write(self):
-        return ["store_admin"]
-
 
 class NewStoreItemController(a.AdminController):
     @coroutine
@@ -1141,10 +1098,7 @@ class NewStoreItemController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -1215,10 +1169,7 @@ class NewStorePackController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -1261,10 +1212,7 @@ class RootAdminController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -1370,10 +1318,7 @@ class StoreController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -1498,10 +1443,7 @@ class StoreItemController(a.AdminController):
         ]
 
     # noinspection PyUnusedLocal
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
     @coroutine
@@ -1724,10 +1666,7 @@ class StorePackController(a.AdminController):
 
         return result
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
     @coroutine
@@ -1809,10 +1748,7 @@ class StorePacksController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
@@ -1957,10 +1893,7 @@ class StoreSettingsController(a.AdminController):
 
         return result
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
     @coroutine
@@ -2005,10 +1938,7 @@ class StoresController(a.AdminController):
             ])
         ]
 
-    def scopes_read(self):
-        return ["store_admin"]
-
-    def scopes_write(self):
+    def access_scopes(self):
         return ["store_admin"]
 
 
