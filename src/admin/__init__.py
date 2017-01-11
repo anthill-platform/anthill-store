@@ -13,7 +13,45 @@ from model.item import ItemError, ItemNotFound
 from model.billing import OfflineBillingMethod, IAPBillingMethod
 from model.pack import PackModel, PackError, PackNotFound, CurrencyError, CurrencyNotFound
 
-from model.components.appstore import AppStoreStoreComponent, AppStoreTierComponent
+
+class StoreAdminComponents(object):
+    COMPONENTS = {}
+
+    @staticmethod
+    def component(component_name, action, store_id):
+        return StoreAdminComponents.COMPONENTS[component_name](component_name, action, store_id)
+
+    @staticmethod
+    def components():
+        return StoreAdminComponents.COMPONENTS.keys()
+
+    @staticmethod
+    def has_component(component_name):
+        return component_name in StoreAdminComponents.COMPONENTS
+
+    @staticmethod
+    def register_component(component_name, component):
+        StoreAdminComponents.COMPONENTS[component_name] = component
+
+
+class TierAdminComponents(object):
+    COMPONENTS = {}
+
+    @staticmethod
+    def component(component_name, action, tier_id):
+        return TierAdminComponents.COMPONENTS[component_name](component_name, action, tier_id)
+
+    @staticmethod
+    def components():
+        return TierAdminComponents.COMPONENTS.keys()
+
+    @staticmethod
+    def has_component(component_name):
+        return component_name in TierAdminComponents.COMPONENTS
+
+    @staticmethod
+    def register_component(component_name, component):
+        TierAdminComponents.COMPONENTS[component_name] = component
 
 
 class TierComponentAdmin(object):
@@ -66,6 +104,9 @@ class StoreComponentAdmin(object):
     def init(self):
         pass
 
+    def icon(self):
+        return "briefcase"
+
     def load(self, data):
         self.component.load(data)
 
@@ -76,34 +117,6 @@ class StoreComponentAdmin(object):
 
     def update(self, bundle, **fields):
         self.component.bundle = bundle
-
-
-class AppStoreStoreComponentAdmin(StoreComponentAdmin):
-    def __init__(self, name, action, store_id):
-        super(AppStoreStoreComponentAdmin, self).__init__(name, action, store_id, AppStoreStoreComponent)
-
-    def get(self):
-        result = super(AppStoreStoreComponentAdmin, self).get()
-        result.update({
-            "sandbox": self.component.sandbox
-        })
-        return result
-
-    def render(self):
-        result = super(AppStoreStoreComponentAdmin, self).render()
-        result.update({
-            "sandbox": a.field("Sandbox environment", "switch", "primary", "non-empty")
-        })
-        return result
-
-    def update(self, sandbox=False, **fields):
-        super(AppStoreStoreComponentAdmin, self).update(**fields)
-        self.component.sandbox = sandbox
-
-
-class AppStoreTierComponentAdmin(TierComponentAdmin):
-    def __init__(self, name, action, tier_id):
-        super(AppStoreTierComponentAdmin, self).__init__(name, action, tier_id, AppStoreTierComponent)
 
 
 class BillingMethodAdmin(object):
@@ -714,7 +727,7 @@ class NewPackComponentController(a.AdminController):
         component_name = self.context.get("component")
         pack_id = self.context.get("pack_id")
 
-        if not StoreComponents.has_component(component_name):
+        if not TierAdminComponents.has_component(component_name):
             raise a.ActionError("Component '{0}' is not supported.")
 
         component_admin = yield self.get_component(component_name, pack_id)
@@ -753,7 +766,7 @@ class NewPackComponentController(a.AdminController):
         else:
             existent_components = set(component.name for component in existent_components)
 
-        new_components = set(StoreComponents.components())
+        new_components = set(TierAdminComponents.components())
         components = list(new_components - existent_components)
 
         raise Return({
@@ -765,7 +778,7 @@ class NewPackComponentController(a.AdminController):
     @coroutine
     def get_component(self, component, pack_id):
         try:
-            component_instance = TierComponents.component(component, self, pack_id)
+            component_instance = TierAdminComponents.component(component, self, pack_id)
         except KeyError:
             raise a.ActionError("No such tier component")
 
@@ -855,7 +868,7 @@ class NewStoreComponentController(a.AdminController):
         component_name = self.context.get("component")
         store_id = self.context.get("store_id")
 
-        if not StoreComponents.has_component(component_name):
+        if not StoreAdminComponents.has_component(component_name):
             raise a.ActionError("Component '{0}' is not supported.")
 
         component_admin = yield self.get_component(component_name, store_id)
@@ -889,7 +902,7 @@ class NewStoreComponentController(a.AdminController):
         else:
             existent_components = set(component.name for component in existent_components)
 
-        new_components = set(StoreComponents.components())
+        new_components = set(StoreAdminComponents.components())
         components = list(new_components - existent_components)
 
         raise Return({
@@ -900,7 +913,7 @@ class NewStoreComponentController(a.AdminController):
     @coroutine
     def get_component(self, component, store_id):
         try:
-            component_instance = StoreComponents.component(component, self, store_id)
+            component_instance = StoreAdminComponents.component(component, self, store_id)
         except KeyError:
             raise a.ActionError("No such store component")
 
@@ -926,7 +939,7 @@ class NewStoreComponentController(a.AdminController):
             result.extend([
                 a.form("New store component: {0}".format(component.name), fields=component.render(), methods={
                     "create_component": a.method("Create component", "primary")
-                }, data=component.get(), icon="briefcase", component=component.name)
+                }, data=component.get(), icon=component.icon(), component=component.name)
             ])
         else:
             components = data["components"]
@@ -1005,6 +1018,7 @@ class NewStoreController(a.AdminController):
 
     def access_scopes(self):
         return ["store_admin"]
+
 
 class NewStoreItemController(a.AdminController):
     @coroutine
@@ -1216,24 +1230,6 @@ class RootAdminController(a.AdminController):
         return ["store_admin"]
 
 
-class StoreComponents(object):
-    COMPONENTS = {
-        "appstore": AppStoreStoreComponentAdmin
-    }
-
-    @staticmethod
-    def component(component_name, action, store_id):
-        return StoreComponents.COMPONENTS[component_name](component_name, action, store_id)
-
-    @staticmethod
-    def components():
-        return StoreComponents.COMPONENTS.keys()
-
-    @staticmethod
-    def has_component(component_name):
-        return component_name in StoreComponents.COMPONENTS
-
-
 class StoreController(a.AdminController):
     @coroutine
     def get(self, store_id):
@@ -1279,10 +1275,6 @@ class StoreController(a.AdminController):
             ], data["store_name"]),
             a.content("Items", [
                 {
-                    "id": "edit",
-                    "title": "Edit"
-                },
-                {
                     "id": "name",
                     "title": "Name"
                 },
@@ -1300,8 +1292,7 @@ class StoreController(a.AdminController):
                 }
             ], [
                 {
-                    "edit": [a.button("item", "Edit", "default", _method="get", item_id=item.item_id)],
-                    "name": item.name,
+                    "name": [a.link("item", item.name, icon="shopping-bag", item_id=item.item_id)],
                     "category": item.category.name,
                     "method": item.method,
                     "actions": [a.button("item", "Delete", "danger", _method="delete", item_id=item.item_id)]
@@ -1514,7 +1505,7 @@ class StorePackController(a.AdminController):
 
         name = component.name
 
-        if not TierComponents.has_component(name):
+        if not TierAdminComponents.has_component(name):
             raise a.ActionError("Component '{0}' is not supported.")
 
         component_admin = yield self.get_component(name, pack_id)
@@ -1598,7 +1589,7 @@ class StorePackController(a.AdminController):
         components = {}
 
         for component in pack_components:
-            if StoreComponents.has_component(component.name):
+            if StoreAdminComponents.has_component(component.name):
                 component_admin = yield self.get_component(component.name, pack_id)
                 component_admin.load(component.data)
                 components[component.component_id] = component_admin
@@ -1617,7 +1608,7 @@ class StorePackController(a.AdminController):
     @coroutine
     def get_component(self, component, tier_id):
         try:
-            component_instance = TierComponents.component(component, self, tier_id)
+            component_instance = TierAdminComponents.component(component, self, tier_id)
         except KeyError:
             raise a.ActionError("No such tier component")
 
@@ -1767,7 +1758,7 @@ class StoreSettingsController(a.AdminController):
 
         name = component.name
 
-        if not StoreComponents.has_component(name):
+        if not StoreAdminComponents.has_component(name):
             raise a.ActionError("Component '{0}' is not supported.")
 
         component_admin = yield self.get_component(name, store_id)
@@ -1834,7 +1825,7 @@ class StoreSettingsController(a.AdminController):
         components = {}
 
         for component in store_components:
-            if StoreComponents.has_component(component.name):
+            if StoreAdminComponents.has_component(component.name):
                 component_admin = yield self.get_component(component.name, store_id)
                 component_admin.load(component.data)
                 components[component.component_id] = component_admin
@@ -1849,7 +1840,7 @@ class StoreSettingsController(a.AdminController):
     @coroutine
     def get_component(self, component, store_id):
         try:
-            component_instance = StoreComponents.component(component, self, store_id)
+            component_instance = StoreAdminComponents.component(component, self, store_id)
         except KeyError:
             raise a.ActionError("No such store component")
 
@@ -1864,21 +1855,21 @@ class StoreSettingsController(a.AdminController):
             a.breadcrumbs([
                 a.link("stores", "Stores"),
                 a.link("store", data["store_name"], store_id=store_id)
-            ], "Settings"),
-            a.form("Store info", fields={
-                "store_name": a.field("Store unique ID", "text", "primary", "non-empty")
-            }, methods={
-                "update": a.method("Update", "primary")
-            }, data=data)
+            ], "Settings")
         ]
 
         for component_id, component in data["store_components"].iteritems():
             result.append(a.form(component.name, fields=component.render(), methods={
                 "change_component": a.method("Update component", "primary"),
                 "delete_component": a.method("Delete component", "danger")
-            }, data=component.get(), icon="briefcase", component_id=component_id))
+            }, data=component.get(), icon=component.icon(), component_id=component_id))
 
         result.extend([
+            a.form("Store info", fields={
+                "store_name": a.field("Store unique ID", "text", "primary", "non-empty")
+            }, methods={
+                "update": a.method("Update", "primary")
+            }, data=data),
             a.form("Delete this store", fields={
                 "danger": a.field("This cannot be undone! Type 'confirm' to do this.", "text", "danger",
                                   "non-empty")
@@ -1961,19 +1952,6 @@ class BillingMethods(object):
         return BillingMethods.METHODS.keys()
 
 
-class TierComponents(object):
-    COMPONENTS = {
-        "appstore": AppStoreTierComponentAdmin
-    }
-
-    @staticmethod
-    def component(component_name, action, tier_id):
-        return TierComponents.COMPONENTS[component_name](component_name, action, tier_id)
-
-    @staticmethod
-    def components():
-        return TierComponents.COMPONENTS.keys()
-
-    @staticmethod
-    def has_component(component_name):
-        return component_name in TierComponents.COMPONENTS
+def init():
+    import appstore
+    import steam

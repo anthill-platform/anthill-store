@@ -40,17 +40,24 @@ class StoreModel(Model):
     @coroutine
     def delete_store(self, gamespace_id, store_id):
         try:
-            yield self.db.execute("""
-                DELETE
-                FROM `stores`
-                WHERE `store_id`=%s AND `gamespace_id`=%s;
-            """, store_id, gamespace_id)
+            with (yield self.db.acquire()) as db:
+                yield db.execute("""
+                    DELETE
+                    FROM `items`
+                    WHERE `store_id`=%s AND `gamespace_id`=%s;
+                """, store_id, gamespace_id)
 
-            yield self.db.execute("""
-                DELETE
-                FROM `store_components`
-                WHERE `store_id`=%s AND `gamespace_id`=%s;
-            """, store_id, gamespace_id)
+                yield db.execute("""
+                    DELETE
+                    FROM `stores`
+                    WHERE `store_id`=%s AND `gamespace_id`=%s;
+                """, store_id, gamespace_id)
+
+                yield db.execute("""
+                    DELETE
+                    FROM `store_components`
+                    WHERE `store_id`=%s AND `gamespace_id`=%s;
+                """, store_id, gamespace_id)
         except DatabaseError as e:
             raise StoreError("Failed to delete store: " + e.args[1])
 

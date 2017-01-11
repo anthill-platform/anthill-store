@@ -1,8 +1,10 @@
 
-import component
+from tornado.gen import coroutine, Return
+
+from . import StoreComponent, TierComponent, StoreComponents, TierComponents
 
 
-class AppStoreStoreComponent(component.StoreComponent):
+class AppStoreStoreComponent(StoreComponent):
 
     LIVE_VERIFY_URL = "https://sandbox.itunes.apple.com/verifyReceipt"
     SANDBOX_VERIFY_URL = "https://buy.itunes.apple.com/verifyReceipt"
@@ -23,7 +25,10 @@ class AppStoreStoreComponent(component.StoreComponent):
         self.sandbox = data.get("sandbox")
 
 
-class AppStoreTierComponent(component.TierComponent):
+class AppStoreTierComponent(TierComponent):
     def __init__(self):
         super(AppStoreTierComponent, self).__init__()
 
+
+StoreComponents.register_component("appstore", AppStoreStoreComponent)
+TierComponents.register_component("appstore", AppStoreTierComponent)

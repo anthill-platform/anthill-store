@@ -8,6 +8,8 @@ import common.access
 import common.sign
 import common.keyvalue
 
+from common.social.steam import SteamAPI
+
 import admin
 import options as _opts
 
@@ -16,6 +18,7 @@ from model.store import StoreModel
 from model.item import ItemModel
 from model.category import CategoryModel
 from model.pack import PackModel, CurrencyModel
+from model.order import OrdersModel
 
 
 class StoreServer(common.server.Server):
@@ -29,12 +32,23 @@ class StoreServer(common.server.Server):
             user=options.db_username,
             password=options.db_password)
 
+        self.cache = common.keyvalue.KeyValueStorage(
+            host=options.cache_host,
+            port=options.cache_port,
+            db=options.cache_db,
+            max_connections=options.cache_max_connections)
+
+        self.steam_api = SteamAPI(self.cache)
+
         self.contents = ContentModel(self.db)
         self.items = ItemModel(self.db)
         self.categories = CategoryModel(self.db)
         self.packs = PackModel(self.db)
         self.currencies = CurrencyModel(self.db)
         self.stores = StoreModel(self.db, self.items, self.packs, self.currencies)
+        self.orders = OrdersModel(self, self.db, self.packs)
+
+        admin.init()
 
     def get_models(self):
         return [self.categories, self.items, self.contents, self.currencies, self.packs, self.stores]
@@ -76,6 +90,8 @@ class StoreServer(common.server.Server):
     def get_handlers(self):
         return [
             (r"/store/(.*)", handler.StoreHandler),
+            (r"/order/new", handler.NewOrderHandler),
+            (r"/order/(.*)", handler.OrderHandler),
         ]
 
 if __name__ == "__main__":
