@@ -16,7 +16,9 @@ CREATE TABLE `orders` (
   KEY `store_id` (`store_id`),
   KEY `pack_id` (`pack_id`),
   KEY `item_id` (`item_id`),
+  KEY `component_id` (`component_id`),
   CONSTRAINT `orders_ibfk_1` FOREIGN KEY (`store_id`) REFERENCES `stores` (`store_id`),
   CONSTRAINT `orders_ibfk_3` FOREIGN KEY (`pack_id`) REFERENCES `packs` (`pack_id`),
-  CONSTRAINT `orders_ibfk_4` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`)
+  CONSTRAINT `orders_ibfk_4` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`),
+  CONSTRAINT `orders_ibfk_5` FOREIGN KEY (`component_id`) REFERENCES `store_components` (`component_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

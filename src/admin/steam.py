@@ -11,8 +11,7 @@ class SteamStoreComponentAdmin(StoreComponentAdmin):
 
     def get(self):
         return {
-            "sandbox": self.component.sandbox,
-            "app_id": self.component.app_id
+            "sandbox": self.component.sandbox
         }
 
     def icon(self):
@@ -20,13 +19,11 @@ class SteamStoreComponentAdmin(StoreComponentAdmin):
 
     def render(self):
         return {
-            "sandbox": a.field("Sandbox environment", "switch", "primary", "non-empty"),
-            "app_id": a.field("Application ID", "text", "primary", "non-empty")
+            "sandbox": a.field("Sandbox environment", "switch", "primary", "non-empty")
         }
 
-    def update(self, app_id, sandbox=False, **fields):
+    def update(self, sandbox=False, **fields):
         self.component.sandbox = sandbox
-        self.component.app_id = app_id
 
 
 StoreAdminComponents.register_component("steam", SteamStoreComponentAdmin)

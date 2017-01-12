@@ -5,6 +5,7 @@ from tornado.gen import coroutine, Return
 import common.admin as a
 import common
 import ujson
+import math
 
 from model.content import ContentError, ContentNotFound
 from model.store import StoreError, StoreNotFound, StoreComponentNotFound
@@ -12,6 +13,7 @@ from model.category import CategoryError, CategoryNotFound
 from model.item import ItemError, ItemNotFound
 from model.billing import OfflineBillingMethod, IAPBillingMethod
 from model.pack import PackModel, PackError, PackNotFound, CurrencyError, CurrencyNotFound
+from model.order import OrderQueryError, OrdersModel
 
 
 class StoreAdminComponents(object):
@@ -481,8 +483,8 @@ class CurrenciesController(a.AdminController):
         return [
             a.breadcrumbs([], "Currencies"),
             a.links("Items", [
-                a.link("currency", item["currency_title"] + u"({0})".format(item["currency_symbol"]),
-                       icon="bitcoin", currency_id=item["currency_id"])
+                a.link("currency", item.titele + u"({0})".format(item.symbol),
+                       icon="bitcoin", currency_id=item.currency_id)
                 for item in data["items"]
                 ]),
             a.links("Navigate", [
@@ -520,11 +522,11 @@ class CurrencyController(a.AdminController):
             raise a.ActionError("No such currency")
 
         result = {
-            "currency_name": content["currency_name"],
-            "currency_title": content["currency_title"],
-            "currency_format": content["currency_format"],
-            "currency_symbol": content["currency_symbol"],
-            "currency_label": content["currency_label"]
+            "currency_name": content.name,
+            "currency_title": content.title,
+            "currency_format": content.format,
+            "currency_symbol": content.symbol,
+            "currency_label": content.label
         }
 
         raise a.Return(result)
@@ -586,10 +588,14 @@ class IAPBillingMethodAdmin(BillingMethodAdmin):
         self.items = yield self.action.application.packs.list_packs(self.action.gamespace, self.store_id)
 
     def render(self):
+
+        packs = {
+            item.name: item.name for item in self.items
+        }
+        packs[""] = "Not selected yet"
+
         return {
-            "pack": a.field("Tier", "select", "primary", "non-empty", values={
-                item.name: item.name for item in self.items
-            })
+            "pack": a.field("Tier", "select", "primary", "non-empty", values=packs)
         }
 
     def update(self, pack):
@@ -1168,7 +1174,7 @@ class NewStorePackController(a.AdminController):
                 "pack_product": a.field("Product ID", "text", "primary", "non-empty"),
                 "pack_prices": a.field(
                     "Tier prices", "kv", "primary",
-                    values={curr["currency_name"]: curr["currency_title"] for curr in data["currencies"]}
+                    values={curr.name: curr.title for curr in data["currencies"]}
                 ),
                 "pack_type": a.field(
                     "Tier kind", "select", "primary",
@@ -1220,7 +1226,7 @@ class RootAdminController(a.AdminController):
         return [
             a.links("Store service", [
                 a.link("contents", "Edit contents", icon="paper-plane"),
-                a.link("stores", "Edit stores", icon="home"),
+                a.link("stores", "Edit stores", icon="shopping-bag"),
                 a.link("categories", "Edit categories", icon="list-alt"),
                 a.link("currencies", "Edit currencies", icon="bitcoin"),
             ])
@@ -1304,6 +1310,7 @@ class StoreController(a.AdminController):
             a.links("Navigate", [
                 a.link("stores", "Go back"),
                 a.link("packs", "Edit tiers", icon="apple", store_id=self.context.get("store_id")),
+                a.link("orders", "Orders", icon="money", store_id=self.context.get("store_id")),
                 a.link("store_settings", "Store settings", icon="cog", store_id=self.context.get("store_id")),
                 a.link("choose_category", "Add new item", icon="plus", store_id=self.context.get("store_id")),
             ])
@@ -1628,7 +1635,7 @@ class StorePackController(a.AdminController):
                 "pack_product": a.field("Product ID", "text", "primary", "non-empty"),
                 "pack_prices": a.field(
                     "Tier prices", "kv", "primary",
-                    values={curr["currency_name"]: curr["currency_title"] for curr in data["currencies"]}
+                    values={curr.name: curr.title for curr in data["currencies"]}
                 ),
                 "pack_type": a.field(
                     "Tier kind", "select", "primary",
@@ -1920,7 +1927,7 @@ class StoresController(a.AdminController):
         return [
             a.breadcrumbs([], "Stores"),
             a.links("Stores", [
-                a.link("store", item.name, icon="home", store_id=item.store_id)
+                a.link("store", item.name, icon="shopping-bag", store_id=item.store_id)
                 for item in data["stores"]
                 ]),
             a.links("Navigate", [
@@ -1931,6 +1938,204 @@ class StoresController(a.AdminController):
 
     def access_scopes(self):
         return ["store_admin"]
+
+
+class OrdersController(a.AdminController):
+
+    ORDERS_PER_PAGE = 20
+
+    def render(self, data):
+        orders = [
+            {
+                "pack": [
+                    a.link("pack", order.pack.name, icon="apple", pack_id=order.pack.pack_id)
+                ],
+                "item": [
+                    a.link("item", order.item.name, icon="shopping-bag", item_id=order.item.item_id)
+                ],
+                "component": [
+                    a.link("store_settings", order.component.name, icon="cog", store_id=order.order.store_id)
+                ],
+                "account": order.order.account_id,
+                "amount": order.order.amount,
+                "total": str(order.order.total) + " " + str(order.order.currency),
+                "status": [
+                    {
+                        OrdersModel.STATUS_NEW: a.status("New", "info", "check"),
+                        OrdersModel.STATUS_CREATED: a.status("Created", "info", "refresh fa-spin"),
+                        OrdersModel.STATUS_SUCCEEDED: a.status("Succeeded", "success", "check"),
+                        OrdersModel.STATUS_ERROR: a.status("Error", "danger", "exclamation-triangle")
+                    }.get(order.order.status, a.status(order.order.status, "default", "refresh")),
+                ],
+                "time": str(order.order.time),
+                "id": [
+                    a.link("order", order.order.order_id, icon="money", order_id=order.order.order_id)
+                ]
+            }
+            for order in data["orders"]
+        ]
+
+        return [
+            a.breadcrumbs([
+                a.link("stores", "Stores"),
+                a.link("store", data["store_name"], store_id=self.context.get("store_id"))
+            ], "Orders"),
+            a.content("Orders", [
+                {
+                    "id": "id",
+                    "title": "ID"
+                }, {
+                    "id": "item",
+                    "title": "Item"
+                }, {
+                    "id": "pack",
+                    "title": "Tier"
+                }, {
+                    "id": "time",
+                    "title": "Time"
+                }, {
+                    "id": "account",
+                    "title": "Account"
+                }, {
+                    "id": "amount",
+                    "title": "Amount"
+                }, {
+                    "id": "total",
+                    "title": "Total"
+                }, {
+                    "id": "status",
+                    "title": "Status"
+                }], orders, "default", empty="No orders to display."),
+            a.pages(data["pages"]),
+            a.form("Filters", fields={
+                "order_item":
+                    a.field("Item", "select", "primary", order=1, values=data["store_items"]),
+                "order_pack":
+                    a.field("Tier", "select", "primary", order=2, values=data["store_packs"]),
+                "order_account":
+                    a.field("Account", "text", "primary", order=3),
+                "order_status":
+                    a.field("Status", "select", "primary", order=4, values=data["order_statuses"]),
+                "order_currency":
+                    a.field("Currency", "select", "primary", order=5, values=data["currencies_list"]),
+            }, methods={
+                "filter": a.method("Filter", "primary")
+            }, data=data, icon="filter"),
+            a.links("Navigate", [
+                a.link("store", "Go back", store_id=self.context.get("store_id"))
+            ])
+        ]
+
+    def access_scopes(self):
+        return ["store_admin"]
+
+    @coroutine
+    def filter(self, **args):
+
+        store_id = self.context.get("store_id")
+        page = self.context.get("page", 1)
+
+        filters = {
+            "page": page
+        }
+
+        filters.update({
+            k: v for k, v in args.iteritems() if v
+        })
+
+        raise a.Redirect("orders", store_id=store_id, **filters)
+
+    @coroutine
+    def get(self,
+            store_id,
+            page=1,
+            order_item=None,
+            order_pack=None,
+            order_account=None,
+            order_status=None,
+            order_currency=None):
+
+        stores = self.application.stores
+        items = self.application.items
+        packs = self.application.packs
+        currencies = self.application.currencies
+
+        try:
+            store = yield stores.get_store(self.gamespace, store_id)
+        except StoreNotFound:
+            raise a.ActionError("No such store")
+
+        try:
+            store_items = yield items.list_items(self.gamespace, store_id)
+        except ItemError as e:
+            raise a.ActionError("Failed to list store items: " + e.message)
+
+        try:
+            store_packs = yield packs.list_packs(self.gamespace, store_id)
+        except ItemError as e:
+            raise a.ActionError("Failed to list store packs: " + e.message)
+
+        try:
+            currencies_list = yield currencies.list_currencies(self.gamespace)
+        except CurrencyError as e:
+            raise a.ActionError("Failed to list currencies: " + e.message)
+
+        page = common.to_int(page)
+
+        orders = self.application.orders
+
+        q = orders.orders_query(self.gamespace, store_id)
+
+        q.offset = (page - 1) * OrdersController.ORDERS_PER_PAGE
+        q.limit = OrdersController.ORDERS_PER_PAGE
+
+        q.item = order_item
+        q.pack = order_pack
+        q.account = order_account
+        q.status = order_status
+        q.currency = order_currency
+
+        orders, count = yield q.query(count=True)
+        pages = int(math.ceil(float(count) / float(OrdersController.ORDERS_PER_PAGE)))
+
+        store_items = {
+            item.item_id: item.name
+            for item in store_items
+        }
+        store_items[""] = "Any"
+
+        store_packs = {
+            pack.pack_id: pack.name
+            for pack in store_packs
+        }
+        store_packs[""] = "Any"
+
+        currencies_list = {
+            currency.name: currency.title
+            for currency in currencies_list
+        }
+        currencies_list[""] = "Any"
+
+        raise Return({
+            "orders": orders,
+            "pages": pages,
+            "order_item": order_item,
+            "order_pack": order_pack,
+            "order_status": order_status,
+            "order_account": order_account,
+            "order_currency": order_currency,
+            "store_name": store.name,
+            "store_items": store_items,
+            "store_packs": store_packs,
+            "currencies_list": currencies_list,
+            "order_statuses": {
+                "": "Any",
+                OrdersModel.STATUS_NEW: "New",
+                OrdersModel.STATUS_SUCCEEDED: "Succeeded",
+                OrdersModel.STATUS_ERROR: "Error",
+                OrdersModel.STATUS_CREATED: "Created"
+            }
+        })
 
 
 class BillingMethods(object):

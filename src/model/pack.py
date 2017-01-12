@@ -6,8 +6,22 @@ from common.model import Model
 import ujson
 
 
+class CurrencyAdapter(object):
+    def __init__(self, record):
+        self.currency_id = record["currency_id"]
+        self.name = record["currency_name"]
+        self.title = record["currency_title"]
+        self.format = record["currency_format"]
+        self.symbol = record["currency_symbol"]
+        self.label = record["currency_label"]
+
+
 class CurrencyError(Exception):
-    pass
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
 
 
 class CurrencyModel(Model):
@@ -29,7 +43,7 @@ class CurrencyModel(Model):
                 WHERE `currency_id`=%s AND `gamespace_id`=%s;
             """, currency_id, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to delete currency: " + e.args[1])
+            raise CurrencyError("Failed to delete currency: " + e.args[1])
 
     @coroutine
     def find_currency(self, gamespace_id, currency_name):
@@ -40,12 +54,12 @@ class CurrencyModel(Model):
                 WHERE `currency_name`=%s AND `gamespace_id`=%s;
             """, currency_name, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to find currency: " + e.args[1])
+            raise CurrencyError("Failed to find currency: " + e.args[1])
 
         if result is None:
             raise CurrencyNotFound()
 
-        raise Return(result)
+        raise Return(CurrencyAdapter(result))
 
     @coroutine
     def get_currency(self, gamespace_id, currency_id):
@@ -56,12 +70,12 @@ class CurrencyModel(Model):
                 WHERE `currency_id`=%s AND `gamespace_id`=%s;
             """, currency_id, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to get currency: " + e.args[1])
+            raise CurrencyError("Failed to get currency: " + e.args[1])
 
         if result is None:
             raise CurrencyNotFound()
 
-        raise Return(result)
+        raise Return(CurrencyAdapter(result))
 
     @coroutine
     def list_currencies(self, gamespace_id):
@@ -72,9 +86,9 @@ class CurrencyModel(Model):
                 WHERE `gamespace_id`=%s;
             """, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to list currencies: " + e.args[1])
+            raise CurrencyError("Failed to list currencies: " + e.args[1])
 
-        raise Return(result)
+        raise Return(map(CurrencyAdapter, result))
 
     @coroutine
     def new_currency(self, gamespace_id, currency_name, currency_title, currency_format,

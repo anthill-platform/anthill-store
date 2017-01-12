@@ -77,7 +77,8 @@ class StoreServer(common.server.Server):
             "new_pack": admin.NewStorePackController,
             "currencies": admin.CurrenciesController,
             "currency": admin.CurrencyController,
-            "new_currency": admin.NewCurrencyController
+            "new_currency": admin.NewCurrencyController,
+            "orders": admin.OrdersController
         }
 
     def get_metadata(self):

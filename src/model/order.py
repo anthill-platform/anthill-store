@@ -4,7 +4,7 @@ from tornado.gen import coroutine, Return
 from store import StoreAdapter, StoreComponentAdapter
 from item import ItemAdapter
 from billing import IAPBillingMethod
-from pack import PackError, PackNotFound
+from pack import PackError, PackNotFound, PackAdapter
 from components import StoreComponents, StoreComponentError
 
 from common.model import Model
@@ -44,6 +44,14 @@ class OrderComponentItemAdapter(object):
         self.item = ItemAdapter(data)
 
 
+class OrderComponentPackItemAdapter(object):
+    def __init__(self, data):
+        self.order = OrderAdapter(data)
+        self.component = StoreComponentAdapter(data)
+        self.item = ItemAdapter(data)
+        self.pack = PackAdapter(data)
+
+
 class OrderError(Exception):
     def __init__(self, code, message):
         self.code = code
@@ -55,6 +63,129 @@ class OrderError(Exception):
 
 class NoOrderError(Exception):
     pass
+
+
+class OrderQueryError(Exception):
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
+
+
+class OrderQuery(object):
+    def __init__(self, gamespace_id, store_id, db):
+        self.gamespace_id = gamespace_id
+        self.store_id = store_id
+        self.db = db
+
+        self.pack = None
+        self.item = None
+        self.component = None
+        self.account = None
+        self.status = None
+        self.currency = None
+
+        self.offset = 0
+        self.limit = 0
+
+    def __values__(self):
+        conditions = [
+            "`orders`.`gamespace_id`=%s",
+            "`orders`.`store_id`=%s",
+            "`orders`.`component_id`=`store_components`.`component_id`",
+            "`orders`.`gamespace_id`=`store_components`.`gamespace_id`",
+            "`items`.`item_id`=`orders`.`item_id`",
+            "`items`.`gamespace_id`=`orders`.`gamespace_id`",
+            "`orders`.`pack_id`=`packs`.`pack_id`"
+        ]
+
+        data = [
+            str(self.gamespace_id),
+            str(self.store_id)
+        ]
+
+        if self.pack:
+            conditions.append("`orders`.`pack_id`=%s")
+            data.append(str(self.pack))
+
+        if self.item:
+            conditions.append("`orders`.`item_id`=%s")
+            data.append(str(self.item))
+
+        if self.component:
+            conditions.append("`orders`.`component_id`=%s")
+            data.append(self.component)
+
+        if self.account:
+            conditions.append("`orders`.`account_id`=%s")
+            data.append(str(self.account))
+
+        if self.currency:
+            conditions.append("`orders`.`order_currency`=%s")
+            data.append(str(self.currency))
+
+        if self.status:
+            conditions.append("`orders`.`order_status`=%s")
+            data.append(str(self.status))
+
+        return conditions, data
+
+    @coroutine
+    def query(self, one=False, count=False):
+        conditions, data = self.__values__()
+
+        query = """
+            SELECT {0} * FROM `orders`, `items`, `store_components`, `packs`
+            WHERE {1}
+        """.format(
+            "SQL_CALC_FOUND_ROWS" if count else "",
+            " AND ".join(conditions))
+
+        query += """
+            ORDER BY `order_time` DESC
+        """
+
+        if self.limit:
+            query += """
+                LIMIT %s,%s
+            """
+            data.append(int(self.offset))
+            data.append(int(self.limit))
+
+        query += ";"
+
+        if one:
+            try:
+                result = yield self.db.get(query, *data)
+            except DatabaseError as e:
+                raise OrderQueryError("Failed to get message: " + e.args[1])
+
+            if not result:
+                raise Return(None)
+
+            raise Return(OrderComponentPackItemAdapter(result))
+        else:
+            try:
+                result = yield self.db.query(query, *data)
+            except DatabaseError as e:
+                raise OrderQueryError("Failed to query messages: " + e.args[1])
+
+            count_result = 0
+
+            if count:
+                count_result = yield self.db.get(
+                    """
+                        SELECT FOUND_ROWS() AS count;
+                    """)
+                count_result = count_result["count"]
+
+            items = map(OrderComponentPackItemAdapter, result)
+
+            if count:
+                raise Return((items, count_result))
+
+            raise Return(items)
 
 
 class OrdersModel(Model):
@@ -161,6 +292,9 @@ class OrdersModel(Model):
                 """, status, order_id, gamespace_id)
         except DatabaseError as e:
             raise OrderError(500, e.args[1])
+
+    def orders_query(self, gamespace, store_id):
+        return OrderQuery(gamespace, store_id, self.db)
 
     @coroutine
     def new_order(self, gamespace_id, account_id, store, component, item, currency, amount, env):
