@@ -14,15 +14,15 @@ class BillingMethod(object):
 class IAPBillingMethod(BillingMethod):
     def __init__(self):
         super(IAPBillingMethod, self).__init__()
-        self.pack = None
+        self.tier = None
 
     def dump(self):
         return {
-            "pack": self.pack
+            "tier": self.tier
         }
 
     def load(self, data):
-        self.pack = data.get("pack", None)
+        self.tier = data.get("tier", None)
 
 
 class OfflineBillingMethod(BillingMethod):

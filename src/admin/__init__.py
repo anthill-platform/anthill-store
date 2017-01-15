@@ -12,7 +12,7 @@ from model.store import StoreError, StoreNotFound, StoreComponentNotFound
 from model.category import CategoryError, CategoryNotFound
 from model.item import ItemError, ItemNotFound
 from model.billing import OfflineBillingMethod, IAPBillingMethod
-from model.pack import PackModel, PackError, PackNotFound, CurrencyError, CurrencyNotFound
+from model.tier import TierModel, TierError, TierNotFound, CurrencyError, CurrencyNotFound
 from model.order import OrderQueryError, OrdersModel
 
 
@@ -483,7 +483,7 @@ class CurrenciesController(a.AdminController):
         return [
             a.breadcrumbs([], "Currencies"),
             a.links("Items", [
-                a.link("currency", item.titele + u"({0})".format(item.symbol),
+                a.link("currency", item.title + u"({0})".format(item.symbol),
                        icon="bitcoin", currency_id=item.currency_id)
                 for item in data["items"]
                 ]),
@@ -580,26 +580,26 @@ class IAPBillingMethodAdmin(BillingMethodAdmin):
 
     def get(self):
         return {
-            "pack": self.method.pack
+            "tier": self.method.tier
         }
 
     @coroutine
     def init(self):
-        self.items = yield self.action.application.packs.list_packs(self.action.gamespace, self.store_id)
+        self.items = yield self.action.application.tiers.list_tiers(self.action.gamespace, self.store_id)
 
     def render(self):
 
-        packs = {
+        tiers = {
             item.name: item.name for item in self.items
         }
-        packs[""] = "Not selected yet"
+        tiers[""] = "Not selected yet"
 
         return {
-            "pack": a.field("Tier", "select", "primary", "non-empty", values=packs)
+            "tier": a.field("Tier", "select", "primary", "non-empty", values=tiers)
         }
 
-    def update(self, pack):
-        self.method.pack = pack
+    def update(self, tier):
+        self.method.tier = tier
 
 
 class NewCategoryController(a.AdminController):
@@ -725,48 +725,48 @@ class NewCurrencyController(a.AdminController):
         return ["store_admin"]
 
 
-class NewPackComponentController(a.AdminController):
+class NewTierComponentController(a.AdminController):
     @coroutine
     def create_component(self, **args):
-        packs = self.application.packs
+        tiers = self.application.tiers
 
         component_name = self.context.get("component")
-        pack_id = self.context.get("pack_id")
+        tier_id = self.context.get("tier_id")
 
         if not TierAdminComponents.has_component(component_name):
             raise a.ActionError("Component '{0}' is not supported.")
 
-        component_admin = yield self.get_component(component_name, pack_id)
+        component_admin = yield self.get_component(component_name, tier_id)
         component_admin.update(**args)
         component_data = component_admin.dump()
 
         try:
-            yield packs.new_pack_component(self.gamespace, pack_id, component_name, component_data)
+            yield tiers.new_tier_component(self.gamespace, tier_id, component_name, component_data)
         except StoreError as e:
             raise a.ActionError("Failed to create store component: " + e.message)
 
         raise a.Redirect(
-            "pack",
+            "tier",
             message="Component has been created",
-            pack_id=pack_id)
+            tier_id=tier_id)
 
     @coroutine
-    def get(self, pack_id):
+    def get(self, tier_id):
         stores = self.application.stores
-        packs = self.application.packs
+        tiers = self.application.tiers
 
         try:
-            pack = yield packs.get_pack(self.gamespace, pack_id)
+            tier = yield tiers.get_tier(self.gamespace, tier_id)
         except StoreNotFound:
             raise a.ActionError("No such tier")
 
         try:
-            store = yield stores.get_store(self.gamespace, pack.store_id)
+            store = yield stores.get_store(self.gamespace, tier.store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            existent_components = yield packs.list_pack_components(self.gamespace, pack_id)
+            existent_components = yield tiers.list_tier_components(self.gamespace, tier_id)
         except StoreError as e:
             raise a.ActionError("Failed to get tier components: " + e.message)
         else:
@@ -778,13 +778,13 @@ class NewPackComponentController(a.AdminController):
         raise Return({
             "components": {component: component for component in components},
             "store_name": store.name,
-            "pack_name": pack.name
+            "tier_name": tier.name
         })
 
     @coroutine
-    def get_component(self, component, pack_id):
+    def get_component(self, component, tier_id):
         try:
-            component_instance = TierAdminComponents.component(component, self, pack_id)
+            component_instance = TierAdminComponents.component(component, self, tier_id)
         except KeyError:
             raise a.ActionError("No such tier component")
 
@@ -794,15 +794,15 @@ class NewPackComponentController(a.AdminController):
 
     def render(self, data):
 
-        pack_id = self.context.get("pack_id")
+        tier_id = self.context.get("tier_id")
         store_id = self.context.get("store_id")
 
         result = [
             a.breadcrumbs([
                 a.link("stores", "Stores"),
                 a.link("store", data["store_name"], store_id=store_id),
-                a.link("packs", "Tiers", store_id=store_id),
-                a.link("pack", data["pack_name"], pack_id=pack_id)
+                a.link("tiers", "Tiers", store_id=store_id),
+                a.link("tier", data["tier_name"], tier_id=tier_id)
             ], "New tier component")
         ]
 
@@ -831,7 +831,7 @@ class NewPackComponentController(a.AdminController):
 
         result.extend([
             a.links("Navigate", [
-                a.link("pack", "Go back", pack_id=pack_id),
+                a.link("tier", "Go back", tier_id=tier_id),
             ])
         ])
 
@@ -843,25 +843,25 @@ class NewPackComponentController(a.AdminController):
     @coroutine
     def select(self, component):
         stores = self.application.stores
-        packs = self.application.packs
+        tiers = self.application.tiers
 
-        pack_id = self.context.get("pack_id")
+        tier_id = self.context.get("tier_id")
 
         try:
-            pack = yield packs.get_pack(self.gamespace, pack_id)
+            tier = yield tiers.get_tier(self.gamespace, tier_id)
         except StoreNotFound:
             raise a.ActionError("No such tier")
 
         try:
-            store = yield stores.get_store(self.gamespace, pack.store_id)
+            store = yield stores.get_store(self.gamespace, tier.store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        component = yield self.get_component(component, pack_id)
+        component = yield self.get_component(component, tier_id)
 
         raise Return({
             "store_name": store.name,
-            "pack_name": pack.name,
+            "tier_name": tier.name,
             "component": component
         })
 
@@ -1122,28 +1122,28 @@ class NewStoreItemController(a.AdminController):
         return ["store_admin"]
 
 
-class NewStorePackController(a.AdminController):
+class NewStoreTierController(a.AdminController):
     @coroutine
-    def create(self, pack_name, pack_product, pack_prices, pack_type):
+    def create(self, tier_name, tier_product, tier_prices):
 
-        packs = self.application.packs
+        tiers = self.application.tiers
 
         try:
-            pack_prices = ujson.loads(pack_prices)
+            tier_prices = ujson.loads(tier_prices)
         except (KeyError, ValueError):
             raise a.ActionError("Corrupted JSON")
 
         store_id = self.context.get("store_id")
 
         try:
-            pack_id = yield packs.new_pack(self.gamespace, store_id, pack_name, pack_type, pack_product, pack_prices)
+            tier_id = yield tiers.new_tier(self.gamespace, store_id, tier_name, tier_product, tier_prices)
         except StoreError as e:
             raise a.ActionError("Failed to create new tier: " + e.args[0])
 
         raise a.Redirect(
-            "pack",
+            "tier",
             message="New tier has been created",
-            pack_id=pack_id)
+            tier_id=tier_id)
 
     @coroutine
     def get(self, store_id):
@@ -1159,7 +1159,7 @@ class NewStorePackController(a.AdminController):
         raise a.Return({
             "store_name": store.name,
             "currencies": (yield currencies.list_currencies(self.gamespace)),
-            "pack_prices": {}
+            "tier_prices": {}
         })
 
     def render(self, data):
@@ -1167,18 +1167,14 @@ class NewStorePackController(a.AdminController):
             a.breadcrumbs([
                 a.link("stores", "Stores"),
                 a.link("store", data["store_name"], store_id=self.context.get("store_id")),
-                a.link("packs", "Tiers", store_id=self.context.get("store_id"))
+                a.link("tiers", "Tiers", store_id=self.context.get("store_id"))
             ], "Add new tier to store"),
             a.form("New tier", fields={
-                "pack_name": a.field("Tier unique name", "text", "primary", "non-empty"),
-                "pack_product": a.field("Product ID", "text", "primary", "non-empty"),
-                "pack_prices": a.field(
+                "tier_name": a.field("Tier unique name", "text", "primary", "non-empty"),
+                "tier_product": a.field("Product ID", "text", "primary", "non-empty"),
+                "tier_prices": a.field(
                     "Tier prices", "kv", "primary",
                     values={curr.name: curr.title for curr in data["currencies"]}
-                ),
-                "pack_type": a.field(
-                    "Tier kind", "select", "primary",
-                    values={tp: tp for tp in PackModel.PACK_TYPES}
                 )
             }, methods={
                 "create": a.method("Create", "primary")
@@ -1285,6 +1281,10 @@ class StoreController(a.AdminController):
                     "title": "Name"
                 },
                 {
+                    "id": "title",
+                    "title": "Title"
+                },
+                {
                     "id": "category",
                     "title": "Category"
                 },
@@ -1301,6 +1301,7 @@ class StoreController(a.AdminController):
                     "name": [a.link("item", item.name, icon="shopping-bag", item_id=item.item_id)],
                     "category": item.category.name,
                     "method": item.method,
+                    "title": item.title("EN"),
                     "actions": [a.button("item", "Delete", "danger", _method="delete", item_id=item.item_id)]
                 } for item in data["items"]], "default"),
 
@@ -1309,7 +1310,7 @@ class StoreController(a.AdminController):
             }, data=data),
             a.links("Navigate", [
                 a.link("stores", "Go back"),
-                a.link("packs", "Edit tiers", icon="apple", store_id=self.context.get("store_id")),
+                a.link("tiers", "Edit tiers", icon="apple", store_id=self.context.get("store_id")),
                 a.link("orders", "Orders", icon="money", store_id=self.context.get("store_id")),
                 a.link("store_settings", "Store settings", icon="cog", store_id=self.context.get("store_id")),
                 a.link("choose_category", "Add new item", icon="plus", store_id=self.context.get("store_id")),
@@ -1497,16 +1498,16 @@ class StoreItemController(a.AdminController):
             item_id=item_id)
 
 
-class StorePackController(a.AdminController):
+class StoreTierController(a.AdminController):
     @coroutine
     def change_component(self, **args):
-        packs = self.application.packs
+        tiers = self.application.tiers
 
         component_id = self.context.get("component_id")
-        pack_id = self.context.get("pack_id")
+        tier_id = self.context.get("tier_id")
 
         try:
-            component = yield packs.get_pack_component(self.gamespace, pack_id, component_id)
+            component = yield tiers.get_tier_component(self.gamespace, tier_id, component_id)
         except StoreComponentNotFound as e:
             raise a.ActionError("No such tier component")
 
@@ -1515,73 +1516,73 @@ class StorePackController(a.AdminController):
         if not TierAdminComponents.has_component(name):
             raise a.ActionError("Component '{0}' is not supported.")
 
-        component_admin = yield self.get_component(name, pack_id)
+        component_admin = yield self.get_component(name, tier_id)
         component_admin.update(**args)
         component_data = component_admin.dump()
 
         try:
-            yield packs.update_pack_component(self.gamespace, pack_id, component_id, component_data)
+            yield tiers.update_tier_component(self.gamespace, tier_id, component_id, component_data)
         except StoreError as e:
             raise a.ActionError("Failed to update tier component: " + e.message)
 
         raise a.Redirect(
-            "pack",
+            "tier",
             message="Component has been updated",
-            pack_id=pack_id)
+            tier_id=tier_id)
 
     @coroutine
     def delete(self, **ignore):
 
-        packs = self.application.packs
-        pack_id = self.context.get("pack_id")
+        tiers = self.application.tiers
+        tier_id = self.context.get("tier_id")
 
         try:
-            pack = yield packs.get_pack(self.gamespace, pack_id)
-        except PackNotFound:
+            tier = yield tiers.get_tier(self.gamespace, tier_id)
+        except TierNotFound:
             raise a.ActionError("Tier not found")
 
-        store_id = pack.store_id
+        store_id = tier.store_id
 
         try:
-            yield packs.delete_pack(self.gamespace, pack_id)
+            yield tiers.delete_tier(self.gamespace, tier_id)
         except StoreError as e:
             raise a.ActionError("Failed to delete tier: " + e.args[0])
 
         raise a.Redirect(
-            "packs",
+            "tiers",
             message="Tier has been deleted",
             store_id=store_id)
 
     @coroutine
     def delete_component(self, **args):
-        packs = self.application.packs
+        tiers = self.application.tiers
 
         component_id = self.context.get("component_id")
-        pack_id = self.context.get("pack_id")
+        tier_id = self.context.get("tier_id")
 
         try:
-            yield packs.delete_pack_component(self.gamespace, pack_id, component_id)
+            yield tiers.delete_tier_component(self.gamespace, tier_id, component_id)
         except StoreError as e:
             raise a.ActionError("Failed to delete tier component: " + e.message)
 
         raise a.Redirect(
-            "pack",
+            "tier",
             message="Component has been deleted",
-            pack_id=pack_id)
+            tier_id=tier_id)
 
     @coroutine
-    def get(self, pack_id):
+    def get(self, tier_id):
 
         stores = self.application.stores
         currencies = self.application.currencies
-        packs = self.application.packs
+        tiers = self.application.tiers
 
         try:
-            pack = yield packs.get_pack(self.gamespace, pack_id)
-        except PackNotFound:
+            tier = yield tiers.get_tier(self.gamespace, tier_id)
+        except TierNotFound:
             raise a.ActionError("Tier not found")
 
-        store_id = pack.store_id
+        store_id = tier.store_id
 
         try:
             store = yield stores.get_store(self.gamespace, store_id)
@@ -1589,15 +1590,15 @@ class StorePackController(a.AdminController):
             raise a.ActionError("No such store")
 
         try:
-            pack_components = yield packs.list_pack_components(self.gamespace, pack_id)
+            tier_components = yield tiers.list_tier_components(self.gamespace, tier_id)
         except StoreError as e:
             raise a.ActionError("Failed to get store components: " + e.message)
 
         components = {}
 
-        for component in pack_components:
+        for component in tier_components:
             if StoreAdminComponents.has_component(component.name):
-                component_admin = yield self.get_component(component.name, pack_id)
+                component_admin = yield self.get_component(component.name, tier_id)
                 component_admin.load(component.data)
                 components[component.component_id] = component_admin
 
@@ -1605,10 +1606,9 @@ class StorePackController(a.AdminController):
             "store_name": store.name,
             "store_id": store_id,
             "currencies": (yield currencies.list_currencies(self.gamespace)),
-            "pack_prices": pack.prices,
-            "pack_name": pack.name,
-            "pack_type": pack.type,
-            "pack_product": pack.product,
+            "tier_prices": tier.prices,
+            "tier_name": tier.name,
+            "tier_product": tier.product,
             "components": components
         })
 
@@ -1628,18 +1628,14 @@ class StorePackController(a.AdminController):
             a.breadcrumbs([
                 a.link("stores", "Stores"),
                 a.link("store", data["store_name"], store_id=data["store_id"]),
-                a.link("packs", "Tiers", store_id=data["store_id"])
-            ], data["pack_name"]),
+                a.link("tiers", "Tiers", store_id=data["store_id"])
+            ], data["tier_name"]),
             a.form("Edit tier", fields={
-                "pack_name": a.field("Tier unique name", "text", "primary", "non-empty"),
-                "pack_product": a.field("Product ID", "text", "primary", "non-empty"),
-                "pack_prices": a.field(
+                "tier_name": a.field("Tier unique name", "text", "primary", "non-empty"),
+                "tier_product": a.field("Product ID", "text", "primary", "non-empty"),
+                "tier_prices": a.field(
                     "Tier prices", "kv", "primary",
                     values={curr.name: curr.title for curr in data["currencies"]}
-                ),
-                "pack_type": a.field(
-                    "Tier kind", "select", "primary",
-                    values={tp: tp for tp in PackModel.PACK_TYPES}
                 )
             }, methods={
                 "update": a.method("Update tier", "primary"),
@@ -1657,8 +1653,8 @@ class StorePackController(a.AdminController):
             a.links("Navigate", [
                 a.link("store", "Go back", store_id=data["store_id"]),
                 a.link("currencies", "Edit currencies", icon="bitcoin"),
-                a.link("new_pack_component", "New component", icon="briefcase",
-                       pack_id=self.context.get("pack_id"))
+                a.link("new_tier_component", "New component", icon="briefcase",
+                       tier_id=self.context.get("tier_id"))
             ])
         ])
 
@@ -1668,43 +1664,43 @@ class StorePackController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    def update(self, pack_name, pack_product, pack_prices, pack_type):
+    def update(self, tier_name, tier_product, tier_prices):
 
-        packs = self.application.packs
-        pack_id = self.context.get("pack_id")
+        tiers = self.application.tiers
+        tier_id = self.context.get("tier_id")
 
         try:
-            pack_prices = ujson.loads(pack_prices)
+            tier_prices = ujson.loads(tier_prices)
         except (KeyError, ValueError):
             raise a.ActionError("Corrupted JSON")
 
         try:
-            yield packs.update_pack(self.gamespace, pack_id, pack_name, pack_type, pack_product, pack_prices)
+            yield tiers.update_tier(self.gamespace, tier_id, tier_name, tier_product, tier_prices)
         except StoreError as e:
             raise a.ActionError("Failed to update tier: " + e.args[0])
 
         raise a.Redirect(
-            "pack",
+            "tier",
             message="Component has been updated",
-            pack_id=pack_id)
+            tier_id=tier_id)
 
 
-class StorePacksController(a.AdminController):
+class StoreTiersController(a.AdminController):
     @coroutine
     def get(self, store_id):
 
         stores = self.application.stores
-        packs = self.application.packs
+        tiers = self.application.tiers
 
         try:
             store = yield stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        packs = yield packs.list_packs(self.gamespace, store_id)
+        tiers = yield tiers.list_tiers(self.gamespace, store_id)
 
         result = {
-            "packs": packs,
+            "tiers": tiers,
             "store_name": store.name
         }
 
@@ -1733,16 +1729,16 @@ class StorePacksController(a.AdminController):
                     "id": "actions",
                     "title": "Actions"
                 }
-            ], [{"edit": [a.button("pack", "Edit", "default", _method="get", pack_id=pack.pack_id)],
-                 "name": pack.name,
-                 "product": pack.product,
-                 "actions": [a.button("pack", "Delete", "danger", _method="delete", pack_id=pack.pack_id)]
-                 } for pack in data["packs"]
+            ], [{"edit": [a.button("tier", "Edit", "default", _method="get", tier_id=tier.tier_id)],
+                 "name": tier.name,
+                 "product": tier.product,
+                 "actions": [a.button("tier", "Delete", "danger", _method="delete", tier_id=tier.tier_id)]
+                 } for tier in data["tiers"]
                 ], "default"),
             a.links("Navigate", [
                 a.link("store", "Go back", store_id=self.context.get("store_id")),
                 a.link("currencies", "Edit currencies", icon="bitcoin"),
-                a.link("new_pack", "Add new tier", icon="plus", store_id=self.context.get("store_id")),
+                a.link("new_tier", "Add new tier", icon="plus", store_id=self.context.get("store_id")),
             ])
         ]
 
@@ -1947,8 +1943,8 @@ class OrdersController(a.AdminController):
     def render(self, data):
         orders = [
             {
-                "pack": [
-                    a.link("pack", order.pack.name, icon="apple", pack_id=order.pack.pack_id)
+                "tier": [
+                    a.link("tier", order.tier.name, icon="apple", tier_id=order.tier.tier_id)
                 ],
                 "item": [
                     a.link("item", order.item.name, icon="shopping-bag", item_id=order.item.item_id)
@@ -1988,7 +1984,7 @@ class OrdersController(a.AdminController):
                     "id": "item",
                     "title": "Item"
                 }, {
-                    "id": "pack",
+                    "id": "tier",
                     "title": "Tier"
                 }, {
                     "id": "time",
@@ -2010,8 +2006,8 @@ class OrdersController(a.AdminController):
             a.form("Filters", fields={
                 "order_item":
                     a.field("Item", "select", "primary", order=1, values=data["store_items"]),
-                "order_pack":
-                    a.field("Tier", "select", "primary", order=2, values=data["store_packs"]),
+                "order_tier":
+                    a.field("Tier", "select", "primary", order=2, values=data["store_tiers"]),
                 "order_account":
                     a.field("Account", "text", "primary", order=3),
                 "order_status":
@@ -2050,14 +2046,14 @@ class OrdersController(a.AdminController):
             store_id,
             page=1,
             order_item=None,
-            order_pack=None,
+            order_tier=None,
             order_account=None,
             order_status=None,
             order_currency=None):
 
         stores = self.application.stores
         items = self.application.items
-        packs = self.application.packs
+        tiers = self.application.tiers
         currencies = self.application.currencies
 
         try:
@@ -2071,9 +2067,9 @@ class OrdersController(a.AdminController):
             raise a.ActionError("Failed to list store items: " + e.message)
 
         try:
-            store_packs = yield packs.list_packs(self.gamespace, store_id)
+            store_tiers = yield tiers.list_tiers(self.gamespace, store_id)
         except ItemError as e:
-            raise a.ActionError("Failed to list store packs: " + e.message)
+            raise a.ActionError("Failed to list store tiers: " + e.message)
 
         try:
             currencies_list = yield currencies.list_currencies(self.gamespace)
@@ -2090,7 +2086,7 @@ class OrdersController(a.AdminController):
         q.limit = OrdersController.ORDERS_PER_PAGE
 
         q.item = order_item
-        q.pack = order_pack
+        q.tier = order_tier
         q.account = order_account
         q.status = order_status
         q.currency = order_currency
@@ -2104,11 +2100,11 @@ class OrdersController(a.AdminController):
         }
         store_items[""] = "Any"
 
-        store_packs = {
-            pack.pack_id: pack.name
-            for pack in store_packs
+        store_tiers = {
+            tier.tier_id: tier.name
+            for tier in store_tiers
         }
-        store_packs[""] = "Any"
+        store_tiers[""] = "Any"
 
         currencies_list = {
             currency.name: currency.title
@@ -2120,13 +2116,13 @@ class OrdersController(a.AdminController):
             "orders": orders,
             "pages": pages,
             "order_item": order_item,
-            "order_pack": order_pack,
+            "order_tier": order_tier,
             "order_status": order_status,
             "order_account": order_account,
             "order_currency": order_currency,
             "store_name": store.name,
             "store_items": store_items,
-            "store_packs": store_packs,
+            "store_tiers": store_tiers,
             "currencies_list": currencies_list,
             "order_statuses": {
                 "": "Any",

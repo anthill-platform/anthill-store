@@ -99,7 +99,7 @@ class CurrencyModel(Model):
         except CurrencyNotFound:
             pass
         else:
-            raise PackError("Currency '{0}' already exists is such store.".format(currency_name))
+            raise TierError("Currency '{0}' already exists is such store.".format(currency_name))
 
         try:
             result = yield self.db.insert("""
@@ -132,30 +132,27 @@ class CurrencyNotFound(Exception):
     pass
 
 
-class PackAdapter(object):
+class TierAdapter(object):
     def __init__(self, record):
-        self.pack_id = record["pack_id"]
+        self.tier_id = record["tier_id"]
         self.store_id = record["store_id"]
-        self.name = record["pack_name"]
-        self.product = record["pack_product"]
-        self.prices = record["pack_prices"]
-        self.type = record["pack_type"]
+        self.name = record["tier_name"]
+        self.product = record["tier_product"]
+        self.prices = record["tier_prices"]
 
 
-class PackComponentAdapter(object):
+class TierComponentAdapter(object):
     def __init__(self, record):
         self.component_id = record["component_id"]
         self.name = record["component"]
         self.data = record["component_data"]
 
 
-class PackComponentNotFound(Exception):
+class TierComponentNotFound(Exception):
     pass
 
 
-class PackModel(Model):
-    PACK_TYPES = ["consumable", "nonconsumable", "subscription"]
-
+class TierModel(Model):
     def __init__(self, db):
         self.db = db
 
@@ -163,200 +160,204 @@ class PackModel(Model):
         return self.db
 
     def get_setup_tables(self):
-        return ["packs", "pack_components"]
+        return ["tiers", "tier_components"]
 
     @coroutine
-    def delete_pack(self, gamespace_id, pack_id):
+    def delete_tier(self, gamespace_id, tier_id):
         try:
             yield self.db.execute("""
                 DELETE
-                FROM `packs`
-                WHERE `pack_id`=%s AND `gamespace_id`=%s;
-            """, pack_id, gamespace_id)
+                FROM `tiers`
+                WHERE `tier_id`=%s AND `gamespace_id`=%s;
+            """, tier_id, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to delete pack: " + e.args[1])
+            raise TierError("Failed to delete tier: " + e.args[1])
 
     @coroutine
-    def delete_pack_component(self, gamespace_id, pack_id, component_id):
+    def delete_tier_component(self, gamespace_id, tier_id, component_id):
         try:
             yield self.db.execute("""
                 DELETE
-                FROM `pack_components`
-                WHERE `pack_id`=%s AND `gamespace_id`=%s AND `component_id`=%s;
-            """, pack_id, gamespace_id, component_id)
+                FROM `tier_components`
+                WHERE `tier_id`=%s AND `gamespace_id`=%s AND `component_id`=%s;
+            """, tier_id, gamespace_id, component_id)
         except DatabaseError as e:
-            raise PackError("Failed to delete pack component: " + e.args[1])
+            raise TierError("Failed to delete tier component: " + e.args[1])
 
     @coroutine
-    def find_pack(self, gamespace_id, store_id, pack_name):
+    def find_tier(self, gamespace_id, store_id, tier_name):
         try:
             result = yield self.db.get("""
                 SELECT *
-                FROM `packs`
-                WHERE `pack_name`=%s AND `store_id`=%s AND `gamespace_id`=%s;
-            """, pack_name, store_id, gamespace_id)
+                FROM `tiers`
+                WHERE `tier_name`=%s AND `store_id`=%s AND `gamespace_id`=%s;
+            """, tier_name, store_id, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to delete find pack: " + e.args[1])
+            raise TierError("Failed to delete find tier: " + e.args[1])
 
         if result is None:
-            raise PackNotFound()
+            raise TierNotFound()
 
-        raise Return(PackAdapter(result))
+        raise Return(TierAdapter(result))
 
     @coroutine
-    def find_pack_component(self, gamespace_id, pack_id, component_name):
+    def find_tier_component(self, gamespace_id, tier_id, component_name):
         try:
             result = yield self.db.get("""
                 SELECT *
-                FROM `pack_components`
-                WHERE `pack_id`=%s AND `gamespace_id`=%s AND `component`=%s;
-            """, pack_id, gamespace_id, component_name)
+                FROM `tier_components`
+                WHERE `tier_id`=%s AND `gamespace_id`=%s AND `component`=%s;
+            """, tier_id, gamespace_id, component_name)
         except DatabaseError as e:
-            raise PackError("Failed to find pack component: " + e.args[1])
+            raise TierError("Failed to find tier component: " + e.args[1])
 
         if result is None:
-            raise PackComponentNotFound()
+            raise TierComponentNotFound()
 
-        raise Return(PackComponentAdapter(result))
+        raise Return(TierComponentAdapter(result))
 
     @coroutine
-    def get_pack(self, gamespace_id, pack_id):
+    def get_tier(self, gamespace_id, tier_id):
         try:
             result = yield self.db.get("""
                 SELECT *
-                FROM `packs`
-                WHERE `pack_id`=%s AND `gamespace_id`=%s;
-            """, pack_id, gamespace_id)
+                FROM `tiers`
+                WHERE `tier_id`=%s AND `gamespace_id`=%s;
+            """, tier_id, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to get pack: " + e.args[1])
+            raise TierError("Failed to get tier: " + e.args[1])
 
         if result is None:
-            raise PackNotFound()
+            raise TierNotFound()
 
-        raise Return(PackAdapter(result))
+        raise Return(TierAdapter(result))
 
     @coroutine
-    def get_pack_component(self, gamespace_id, pack_id, component_id):
+    def get_tier_component(self, gamespace_id, tier_id, component_id):
         try:
             result = yield self.db.get("""
                 SELECT *
-                FROM `pack_components`
-                WHERE `pack_id`=%s AND `gamespace_id`=%s AND `component_id`=%s;
-            """, pack_id, gamespace_id, component_id)
+                FROM `tier_components`
+                WHERE `tier_id`=%s AND `gamespace_id`=%s AND `component_id`=%s;
+            """, tier_id, gamespace_id, component_id)
         except DatabaseError as e:
-            raise PackError("Failed to get pack component: " + e.args[1])
+            raise TierError("Failed to get tier component: " + e.args[1])
 
         if result is None:
-            raise PackComponentNotFound()
+            raise TierComponentNotFound()
 
-        raise Return(PackComponentAdapter(result))
+        raise Return(TierComponentAdapter(result))
 
     @coroutine
-    def list_pack_components(self, gamespace_id, pack_id):
+    def list_tier_components(self, gamespace_id, tier_id):
         try:
             result = yield self.db.query("""
                 SELECT *
-                FROM `pack_components`
-                WHERE `pack_id`=%s AND `gamespace_id`=%s;
-            """, pack_id, gamespace_id)
+                FROM `tier_components`
+                WHERE `tier_id`=%s AND `gamespace_id`=%s;
+            """, tier_id, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to list pack components: " + e.args[1])
+            raise TierError("Failed to list tier components: " + e.args[1])
         else:
-            raise Return(map(PackComponentAdapter, result))
+            raise Return(map(TierComponentAdapter, result))
 
     @coroutine
-    def list_packs(self, gamespace_id, store_id):
+    def list_tiers(self, gamespace_id, store_id):
         try:
             result = yield self.db.query("""
                 SELECT *
-                FROM `packs`
+                FROM `tiers`
                 WHERE `store_id`=%s AND `gamespace_id`=%s;
             """, store_id, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to delete list packs: " + e.args[1])
+            raise TierError("Failed to delete list tiers: " + e.args[1])
 
-        raise Return(map(PackAdapter, result))
+        raise Return(map(TierAdapter, result))
 
     @coroutine
-    def new_pack(self, gamespace_id, store_id, pack_name, pack_type, pack_product, pack_prices):
+    def new_tier(self, gamespace_id, store_id, tier_name, tier_product, tier_prices):
 
         try:
-            yield self.find_pack(gamespace_id, store_id, pack_name)
-        except PackNotFound:
+            yield self.find_tier(gamespace_id, store_id, tier_name)
+        except TierNotFound:
             pass
         else:
-            raise PackError("Pack '{0}' already exists is such store.".format(pack_name))
+            raise TierError("Tier '{0}' already exists is such store.".format(tier_name))
 
         try:
-            pack_id = yield self.db.insert("""
-                INSERT INTO `packs`
-                (`gamespace_id`, `store_id`, `pack_name`, `pack_type`, `pack_product`, `pack_prices`)
-                VALUES (%s, %s, %s, %s, %s, %s);
-            """, gamespace_id, store_id, pack_name, pack_type, pack_product, ujson.dumps(pack_prices))
+            tier_id = yield self.db.insert("""
+                INSERT INTO `tiers`
+                (`gamespace_id`, `store_id`, `tier_name`, `tier_product`, `tier_prices`)
+                VALUES (%s, %s, %s, %s, %s);
+            """, gamespace_id, store_id, tier_name, tier_product, ujson.dumps(tier_prices))
         except DatabaseError as e:
-            raise PackError("Failed to add new pack: " + e.args[1])
+            raise TierError("Failed to add new tier: " + e.args[1])
 
-        raise Return(pack_id)
+        raise Return(tier_id)
 
     @coroutine
-    def new_pack_component(self, gamespace_id, pack_id, component_name, component_data):
+    def new_tier_component(self, gamespace_id, tier_id, component_name, component_data):
         if not isinstance(component_data, dict):
-            raise PackError("Component data should be a dict")
+            raise TierError("Component data should be a dict")
 
         try:
-            yield self.find_pack_component(gamespace_id, pack_id, component_name)
-        except PackComponentNotFound:
+            yield self.find_tier_component(gamespace_id, tier_id, component_name)
+        except TierComponentNotFound:
             pass
         else:
-            raise PackError("Pack component '{0}' already exists.".format(component_name))
+            raise TierError("Tier component '{0}' already exists.".format(component_name))
 
         try:
             component_id = yield self.db.insert("""
-                INSERT INTO `pack_components`
-                (`gamespace_id`, `pack_id`, `component`, `component_data`)
+                INSERT INTO `tier_components`
+                (`gamespace_id`, `tier_id`, `component`, `component_data`)
                 VALUES (%s, %s, %s, %s);
-            """, gamespace_id, pack_id, component_name, ujson.dumps(component_data))
+            """, gamespace_id, tier_id, component_name, ujson.dumps(component_data))
         except DatabaseError as e:
-            raise PackError("Failed to add new pack component: " + e.args[1])
+            raise TierError("Failed to add new tier component: " + e.args[1])
 
         raise Return(component_id)
 
     @coroutine
-    def update_pack(self, gamespace_id, pack_id, pack_name, pack_type, pack_product, pack_prices):
+    def update_tier(self, gamespace_id, tier_id, tier_name, tier_product, tier_prices):
         try:
             yield self.db.execute("""
-                UPDATE `packs`
-                SET `pack_name`=%s, `pack_product`=%s, `pack_prices`=%s, `pack_type`=%s
-                WHERE `pack_id`=%s AND `gamespace_id`=%s;
-            """, pack_name, pack_product, ujson.dumps(pack_prices), pack_type, pack_id, gamespace_id)
+                UPDATE `tiers`
+                SET `tier_name`=%s, `tier_product`=%s, `tier_prices`=%s
+                WHERE `tier_id`=%s AND `gamespace_id`=%s;
+            """, tier_name, tier_product, ujson.dumps(tier_prices), tier_id, gamespace_id)
         except DatabaseError as e:
-            raise PackError("Failed to update pack: " + e.args[1])
+            raise TierError("Failed to update tier: " + e.args[1])
 
     @coroutine
-    def update_pack_component(self, gamespace_id, pack_id, component_id, component_data):
+    def update_tier_component(self, gamespace_id, tier_id, component_id, component_data):
         if not isinstance(component_data, dict):
-            raise PackError("Component data should be a dict")
+            raise TierError("Component data should be a dict")
 
         try:
-            yield self.get_pack_component(gamespace_id, pack_id, component_id)
-        except PackComponentNotFound:
-            raise PackError("Pack component not exists.")
+            yield self.get_tier_component(gamespace_id, tier_id, component_id)
+        except TierComponentNotFound:
+            raise TierError("Tier component not exists.")
 
         try:
             yield self.db.execute("""
-                UPDATE `pack_components`
+                UPDATE `tier_components`
                 SET `component_data`=%s
-                WHERE `pack_id`=%s AND `gamespace_id`=%s AND `component_id`=%s;
-            """, ujson.dumps(component_data), pack_id, gamespace_id, component_id)
+                WHERE `tier_id`=%s AND `gamespace_id`=%s AND `component_id`=%s;
+            """, ujson.dumps(component_data), tier_id, gamespace_id, component_id)
         except DatabaseError as e:
-            raise PackError("Failed to update pack component: " + e.args[1])
+            raise TierError("Failed to update tier component: " + e.args[1])
 
 
-class PackError(Exception):
-    pass
+class TierError(Exception):
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
 
 
-class PackNotFound(Exception):
+class TierNotFound(Exception):
     pass
 
 

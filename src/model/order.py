@@ -4,7 +4,7 @@ from tornado.gen import coroutine, Return
 from store import StoreAdapter, StoreComponentAdapter
 from item import ItemAdapter
 from billing import IAPBillingMethod
-from pack import PackError, PackNotFound, PackAdapter
+from tier import TierError, TierNotFound, TierAdapter
 from components import StoreComponents, StoreComponentError
 
 from common.model import Model
@@ -18,7 +18,7 @@ class OrderAdapter(object):
     def __init__(self, data):
         self.order_id = str(data.get("order_id"))
         self.store_id = str(data.get("store_id"))
-        self.pack_id = str(data.get("pack_id"))
+        self.tier_id = str(data.get("tier_id"))
         self.item_id = str(data.get("item_id"))
         self.component_id = str(data.get("component_id"))
         self.account_id = str(data.get("account_id"))
@@ -44,12 +44,12 @@ class OrderComponentItemAdapter(object):
         self.item = ItemAdapter(data)
 
 
-class OrderComponentPackItemAdapter(object):
+class OrderComponentTierItemAdapter(object):
     def __init__(self, data):
         self.order = OrderAdapter(data)
         self.component = StoreComponentAdapter(data)
         self.item = ItemAdapter(data)
-        self.pack = PackAdapter(data)
+        self.tier = TierAdapter(data)
 
 
 class OrderError(Exception):
@@ -79,7 +79,7 @@ class OrderQuery(object):
         self.store_id = store_id
         self.db = db
 
-        self.pack = None
+        self.tier = None
         self.item = None
         self.component = None
         self.account = None
@@ -97,7 +97,7 @@ class OrderQuery(object):
             "`orders`.`gamespace_id`=`store_components`.`gamespace_id`",
             "`items`.`item_id`=`orders`.`item_id`",
             "`items`.`gamespace_id`=`orders`.`gamespace_id`",
-            "`orders`.`pack_id`=`packs`.`pack_id`"
+            "`orders`.`tier_id`=`tiers`.`tier_id`"
         ]
 
         data = [
@@ -105,9 +105,9 @@ class OrderQuery(object):
             str(self.store_id)
         ]
 
-        if self.pack:
-            conditions.append("`orders`.`pack_id`=%s")
-            data.append(str(self.pack))
+        if self.tier:
+            conditions.append("`orders`.`tier_id`=%s")
+            data.append(str(self.tier))
 
         if self.item:
             conditions.append("`orders`.`item_id`=%s")
@@ -136,7 +136,7 @@ class OrderQuery(object):
         conditions, data = self.__values__()
 
         query = """
-            SELECT {0} * FROM `orders`, `items`, `store_components`, `packs`
+            SELECT {0} * FROM `orders`, `items`, `store_components`, tiers
             WHERE {1}
         """.format(
             "SQL_CALC_FOUND_ROWS" if count else "",
@@ -164,7 +164,7 @@ class OrderQuery(object):
             if not result:
                 raise Return(None)
 
-            raise Return(OrderComponentPackItemAdapter(result))
+            raise Return(OrderComponentTierItemAdapter(result))
         else:
             try:
                 result = yield self.db.query(query, *data)
@@ -180,7 +180,7 @@ class OrderQuery(object):
                     """)
                 count_result = count_result["count"]
 
-            items = map(OrderComponentPackItemAdapter, result)
+            items = map(OrderComponentTierItemAdapter, result)
 
             if count:
                 raise Return((items, count_result))
@@ -195,10 +195,10 @@ class OrdersModel(Model):
     STATUS_CREATED = "CREATED"
     STATUS_SUCCEEDED = "SUCCEEDED"
 
-    def __init__(self, app, db, packs):
+    def __init__(self, app, db, tiers):
         self.app = app
         self.db = db
-        self.packs = packs
+        self.tiers = tiers
 
     def get_setup_tables(self):
         return ["orders"]
@@ -316,27 +316,27 @@ class OrdersModel(Model):
             billing.load(data.item.method_data)
 
             try:
-                pack = yield self.packs.find_pack(gamespace_id, store_id, billing.pack)
-            except PackError as e:
+                tier = yield self.tiers.find_tier(gamespace_id, store_id, billing.tier)
+            except TierError as e:
                 raise OrderError(500, e.message)
-            except PackNotFound:
-                raise OrderError(404, "Pack was not found")
+            except TierNotFound:
+                raise OrderError(404, "Tier was not found")
 
-            if currency not in pack.prices:
-                raise OrderError(404, "No such currency for a pack")
+            if currency not in tier.prices:
+                raise OrderError(404, "No such currency for a tier")
 
-            pack_id = pack.pack_id
-            price = pack.prices[currency]
+            tier_id = tier.tier_id
+            price = tier.prices[currency]
             total = price * amount
 
             try:
                 order_id = yield db.insert(
                     """
                         INSERT INTO `orders`
-                            (`gamespace_id`, `store_id`, `pack_id`, `item_id`, `account_id`,
+                            (`gamespace_id`, `store_id`, `tier_id`, `item_id`, `account_id`,
                              `component_id`, `order_amount`, `order_status`, `order_currency`, `order_total`)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, gamespace_id, store_id, pack_id, item_id, account_id, component_id,
+                    """, gamespace_id, store_id, tier_id, item_id, account_id, component_id,
                     amount, OrdersModel.STATUS_NEW, currency, total
                 )
             except DatabaseError as e:

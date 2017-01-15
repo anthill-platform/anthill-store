@@ -2,7 +2,7 @@ CREATE TABLE `orders` (
   `order_id` int(11) unsigned NOT NULL AUTO_INCREMENT,
   `gamespace_id` int(11) unsigned NOT NULL,
   `store_id` int(11) unsigned NOT NULL,
-  `pack_id` int(11) unsigned NOT NULL,
+  `tier_id` int(11) unsigned NOT NULL,
   `item_id` int(11) unsigned NOT NULL,
   `component_id` int(11) unsigned NOT NULL,
   `account_id` int(11) unsigned NOT NULL,
@@ -14,11 +14,11 @@ CREATE TABLE `orders` (
   `order_info` json DEFAULT NULL,
   PRIMARY KEY (`order_id`),
   KEY `store_id` (`store_id`),
-  KEY `pack_id` (`pack_id`),
+  KEY `pack_id` (`tier_id`),
   KEY `item_id` (`item_id`),
   KEY `component_id` (`component_id`),
   CONSTRAINT `orders_ibfk_1` FOREIGN KEY (`store_id`) REFERENCES `stores` (`store_id`),
-  CONSTRAINT `orders_ibfk_3` FOREIGN KEY (`pack_id`) REFERENCES `packs` (`pack_id`),
+  CONSTRAINT `orders_ibfk_3` FOREIGN KEY (`tier_id`) REFERENCES `tiers` (`tier_id`),
   CONSTRAINT `orders_ibfk_4` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`),
   CONSTRAINT `orders_ibfk_5` FOREIGN KEY (`component_id`) REFERENCES `store_components` (`component_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

@@ -17,7 +17,7 @@ from model.content import ContentModel
 from model.store import StoreModel
 from model.item import ItemModel
 from model.category import CategoryModel
-from model.pack import PackModel, CurrencyModel
+from model.tier import TierModel, CurrencyModel
 from model.order import OrdersModel
 
 
@@ -43,15 +43,15 @@ class StoreServer(common.server.Server):
         self.contents = ContentModel(self.db)
         self.items = ItemModel(self.db)
         self.categories = CategoryModel(self.db)
-        self.packs = PackModel(self.db)
+        self.tiers = TierModel(self.db)
         self.currencies = CurrencyModel(self.db)
-        self.stores = StoreModel(self.db, self.items, self.packs, self.currencies)
-        self.orders = OrdersModel(self, self.db, self.packs)
+        self.stores = StoreModel(self.db, self.items, self.tiers, self.currencies)
+        self.orders = OrdersModel(self, self.db, self.tiers)
 
         admin.init()
 
     def get_models(self):
-        return [self.categories, self.items, self.contents, self.currencies, self.packs, self.stores]
+        return [self.categories, self.items, self.contents, self.currencies, self.tiers, self.stores]
 
     def get_admin(self):
         return {
@@ -71,10 +71,10 @@ class StoreServer(common.server.Server):
             "choose_category": admin.ChooseCategoryController,
             "new_item": admin.NewStoreItemController,
             "item": admin.StoreItemController,
-            "packs": admin.StorePacksController,
-            "new_pack_component": admin.NewPackComponentController,
-            "pack": admin.StorePackController,
-            "new_pack": admin.NewStorePackController,
+            "tiers": admin.StoreTiersController,
+            "new_tier_component": admin.NewTierComponentController,
+            "tier": admin.StoreTierController,
+            "new_tier": admin.NewStoreTierController,
             "currencies": admin.CurrenciesController,
             "currency": admin.CurrencyController,
             "new_currency": admin.NewCurrencyController,

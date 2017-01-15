@@ -25,10 +25,10 @@ class StoreComponentNotFound(Exception):
 
 
 class StoreModel(Model):
-    def __init__(self, db, items, packs, currencies):
+    def __init__(self, db, items, tiers, currencies):
         self.db = db
         self.items = items
-        self.packs = packs
+        self.tiers = tiers
         self.currencies = currencies
 
     def get_setup_db(self):
@@ -240,24 +240,38 @@ class StoreModel(Model):
     @coroutine
     def publish_store(self, gamespace_id, store_id):
         store_items = yield self.items.list_items(gamespace_id, store_id)
-        store_packs = yield self.packs.list_packs(gamespace_id, store_id)
+        store_tiers = yield self.tiers.list_tiers(gamespace_id, store_id)
         currencies = yield self.currencies.list_currencies(gamespace_id)
 
         currencies_data = {
-            currency["currency_name"]: {
-                "title": currency["currency_title"],
-                "format": currency["currency_format"],
-                "symbol": currency["currency_symbol"],
-                "label": currency["currency_label"]
+            currency.name: {
+                "title": currency.title,
+                "format": currency.format,
+                "symbol": currency.symbol,
+                "label": currency.label
             } for currency in currencies
         }
 
+        items = []
+
+        for item in store_items:
+
+            billing = item.method_data
+            billing["type"] = item.method
+
+            items.append({
+                "id": item.name,
+                "category": item.category.name,
+                "payload": item.data,
+                "billing": billing,
+                "contents": item.contents
+            })
+
         data = {
-            "packs":
+            "tiers":
             {
-                pack.name: {
-                    "product": pack.product,
-                    "type": pack.type,
+                tier.name: {
+                    "product": tier.product,
                     "prices": {
                         currency: {
                             "title": currencies_data[currency]["title"],
@@ -265,25 +279,11 @@ class StoreModel(Model):
                             "format": currencies_data[currency]["format"].format(price),
                             "symbol": currencies_data[currency]["symbol"],
                             "label": currencies_data[currency]["label"],
-                        } for currency, price in pack.prices.iteritems()
+                        } for currency, price in tier.prices.iteritems()
                     }
-                } for pack in store_packs
+                } for tier in store_tiers
             },
-            "items":
-            [
-                {
-                    "id": item.name,
-                    "category": item.category.name,
-                    "payload": item.data,
-                    "billing":
-                    {
-                        "type": item.method,
-                        "data": item.method_data
-                    },
-                    "contents": item.contents
-                }
-                for item in store_items
-            ]
+            "items": items
         }
 
         yield self.db.execute("""

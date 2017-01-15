@@ -2,20 +2,41 @@ from tornado.gen import coroutine, Return
 
 from common.database import DatabaseError
 from common.model import Model
-import ujson
 from category import CategoryAdapter
 
+import common
+import ujson
 
 class ItemAdapter(object):
     def __init__(self, record):
         self.item_id = record["item_id"]
         self.name = record["item_name"]
         self.store_id = record["store_id"]
-        self.data = record.get("json")
+        self.data = record.get("item_json")
         self.category = record["item_category"]
         self.method = record["item_method"]
         self.method_data = record["item_method_data"]
         self.contents = record["item_contents"]
+
+    def description(self, language):
+        descriptions = self.data.get("description", {})
+
+        if isinstance(descriptions, (str, unicode)):
+            return descriptions
+        elif isinstance(descriptions, dict):
+            return descriptions.get(language, descriptions.get("EN", "Unknown"))
+
+        return "Unknown"
+
+    def title(self, language):
+        titles = self.data.get("title", {})
+
+        if isinstance(titles, (str, unicode)):
+            return titles
+        elif isinstance(titles, dict):
+            return titles.get(language, titles.get("EN", "Unknown"))
+
+        return "Unknown"
 
 
 class ItemCategoryAdapter(ItemAdapter):
@@ -98,6 +119,8 @@ class ItemModel(Model):
     def new_item(self, gamespace_id, store_id, category_id, item_name, item_contents,
                  item_data, item_method, method_data):
 
+        item_contents = ItemModel.validate_item_contents(item_contents)
+
         try:
             yield self.find_item(gamespace_id, store_id, item_name)
         except ItemNotFound:
@@ -121,6 +144,9 @@ class ItemModel(Model):
 
     @coroutine
     def update_item(self, gamespace_id, item_id, item_name, item_contents, item_data):
+
+        item_contents = ItemModel.validate_item_contents(item_contents)
+        
         try:
             yield self.db.execute("""
                 UPDATE `items`
@@ -141,6 +167,16 @@ class ItemModel(Model):
             """, ujson.dumps(method_data), item_id, gamespace_id)
         except DatabaseError as e:
             raise ItemError("Failed to update item billing: " + e.args[1])
+
+    @staticmethod
+    def validate_item_contents(item_contents):
+        if not isinstance(item_contents, dict):
+            raise ItemError("Item contents should be a dict")
+
+        return {
+            k: common.to_int(v)
+            for k, v in item_contents.iteritems()
+        }
 
 
 class ItemNotFound(Exception):

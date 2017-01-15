@@ -101,12 +101,15 @@ class SteamStoreComponent(StoreComponent):
 
         private_key = yield steam_api.get_private_key(gamespace_id)
 
+        language = env.get("language", "EN")
+        description = item.description(language)
+
         arguments = {
             "orderid": order_id,
             "steamid": steam_id,
             "appid": private_key.app_id,
             "itemcount": 1,
-            "language": env.get("language", "EN"),
+            "language": language,
             "currency": currency,
             "usersession": "client",
             "key": private_key.key,
@@ -114,7 +117,7 @@ class SteamStoreComponent(StoreComponent):
             "itemid[0]": item.item_id,
             "qty[0]": amount,
             "amount[0]": int(float(total) * 100),
-            "description[0]": item.data.get("description", "Unknown description")
+            "description[0]": description
         }
 
         category = item.data.get("category")
