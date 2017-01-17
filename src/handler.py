@@ -14,7 +14,7 @@ import ujson
 
 
 class StoreHandler(AuthenticatedHandler):
-    @scoped()
+    @scoped(["store"])
     @coroutine
     def get(self, store_name):
 
@@ -34,7 +34,7 @@ class StoreHandler(AuthenticatedHandler):
 
 
 class NewOrderHandler(AuthenticatedHandler):
-    @scoped()
+    @scoped(["store_order"])
     @coroutine
     def post(self):
         orders = self.application.orders
@@ -68,7 +68,7 @@ class NewOrderHandler(AuthenticatedHandler):
 
 
 class OrderHandler(AuthenticatedHandler):
-    @scoped()
+    @scoped(["store_order"])
     @coroutine
     def post(self, order_id):
         orders = self.application.orders
