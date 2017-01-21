@@ -51,7 +51,7 @@ class StoreServer(common.server.Server):
         admin.init()
 
     def get_models(self):
-        return [self.categories, self.items, self.contents, self.currencies, self.tiers, self.stores]
+        return [self.currencies, self.categories, self.stores, self.items, self.contents, self.tiers]
 
     def get_admin(self):
         return {
