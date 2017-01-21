@@ -8,9 +8,9 @@ import ujson
 
 class ContentAdapter(object):
     def __init__(self, record):
-        self.content_id = record["content_id"]
-        self.name = record["content_name"]
-        self.data = record.get("content_json")
+        self.content_id = record.get("content_id")
+        self.name = record.get("content_name", "")
+        self.data = record.get("content_json", {})
 
 
 class ContentError(Exception):

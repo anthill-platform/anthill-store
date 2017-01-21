@@ -116,7 +116,7 @@ class SteamStoreComponent(StoreComponent):
 
             "itemid[0]": item.item_id,
             "qty[0]": amount,
-            "amount[0]": int(float(total) * 100),
+            "amount[0]": int(total),
             "description[0]": description
         }
 
@@ -124,6 +124,11 @@ class SteamStoreComponent(StoreComponent):
 
         if category:
             arguments["category[0]"] = arguments
+
+        arguments = {
+            k: unicode(v).encode("UTF-8")
+            for k, v in arguments.iteritems()
+        }
 
         request = HTTPRequest(
             url=self.__url__() + "/InitTxn/V0002",

@@ -6,9 +6,12 @@ from item import ItemAdapter
 from billing import IAPBillingMethod
 from tier import TierError, TierNotFound, TierAdapter
 from components import StoreComponents, StoreComponentError
+from content import ContentAdapter
 
 from common.model import Model
 from common.database import DatabaseError
+from common import to_int
+
 
 import logging
 import ujson
@@ -37,11 +40,12 @@ class StoreComponentItemAdapter(object):
         self.item = ItemAdapter(data)
 
 
-class OrderComponentItemAdapter(object):
+class OrderStoreComponentItemAdapter(object):
     def __init__(self, data):
         self.order = OrderAdapter(data)
         self.component = StoreComponentAdapter(data)
         self.item = ItemAdapter(data)
+        self.store = StoreAdapter(data)
 
 
 class OrderComponentTierItemAdapter(object):
@@ -253,12 +257,13 @@ class OrdersModel(Model):
             data = yield (db or self.db).get(
                 """
                     SELECT *
-                    FROM `orders`, `store_components`, `items`
+                    FROM `orders`, `store_components`, `items`, `stores`
                     WHERE `orders`.`order_id`=%s AND `orders`.`gamespace_id`=%s
                         AND `orders`.`component_id`=`store_components`.`component_id`
                         AND `orders`.`gamespace_id`=`store_components`.`gamespace_id`
                         AND `items`.`item_id`=`orders`.`item_id`
-                        AND `items`.`gamespace_id`=`orders`.`gamespace_id`;
+                        AND `items`.`gamespace_id`=`orders`.`gamespace_id`
+                        AND `stores`.`store_id`=`orders`.`store_id`;
                 """, order_id, gamespace_id
             )
         except DatabaseError as e:
@@ -267,7 +272,7 @@ class OrdersModel(Model):
         if not data:
             raise NoOrderError()
 
-        raise Return(OrderComponentItemAdapter(data))
+        raise Return(OrderStoreComponentItemAdapter(data))
 
     @coroutine
     def update_order_info(self, gamespace_id, order_id, status, info, db=None):
@@ -382,7 +387,7 @@ class OrdersModel(Model):
             })
             raise OrderError(e.code, e.message)
         else:
-            logging.info("Order succseeded!", extra={
+            logging.info("Order succeeded!", extra={
                 "gamespace": gamespace_id,
                 "order": data.order.order_id,
                 "account": account_id,
@@ -393,14 +398,39 @@ class OrdersModel(Model):
 
             yield self.update_order_status(gamespace_id, data.order.order_id, OrdersModel.STATUS_SUCCEEDED, db=db)
 
+            content_names = [filter(str, data.item.contents.keys())]
+            contents = []
+
+            if content_names:
+                try:
+                    contents = yield db.query(
+                        """
+                            SELECT `content_name`, `content_json`
+                            FROM `contents`
+                            WHERE `gamespace_id`=%s AND `content_name` IN %s;
+                        """, gamespace_id, content_names)
+                except DatabaseError as e:
+                    logging.exception("Failed to fetch contents")
+                    contents = []
+
             raise Return({
-                "status": OrdersModel.STATUS_SUCCEEDED,
-                "contents": data.item.contents,
-                "amount": data.order.amount
+                "contents": {
+                    content.name: {
+                        "payload": content.data,
+                        "amount": to_int(data.item.contents.get(content.name, 1), 1)
+                    }
+                    for content in map(ContentAdapter, contents)
+                },
+                "item": data.item.name,
+                "amount": data.order.amount,
+                "currency": data.order.currency,
+                "store": data.store.name,
+                "total": data.order.total,
+                "order_id": to_int(data.order.order_id)
             })
 
     @coroutine
-    def __process_order_succseeded__(self, gamespace_id, data, account_id, db):
+    def __process_order_succeeded__(self, gamespace_id, data, account_id, db):
         logging.warning("Processing already succeeded order", extra={
             "gamespace": gamespace_id,
             "order": data.order.order_id,
@@ -420,7 +450,7 @@ class OrdersModel(Model):
             processors = {
                 OrdersModel.STATUS_ERROR: self.__process_order_error__,
                 OrdersModel.STATUS_CREATED: self.__process_order_processing__,
-                OrdersModel.STATUS_SUCCEEDED: self.__process_order_succseeded__
+                OrdersModel.STATUS_SUCCEEDED: self.__process_order_succeeded__
             }
 
             order_status = order.order.status

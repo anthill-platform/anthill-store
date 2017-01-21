@@ -1173,7 +1173,7 @@ class NewStoreTierController(a.AdminController):
                 "tier_name": a.field("Tier unique name", "text", "primary", "non-empty"),
                 "tier_product": a.field("Product ID", "text", "primary", "non-empty"),
                 "tier_prices": a.field(
-                    "Tier prices", "kv", "primary",
+                    "Tier prices (in cents)", "kv", "primary",
                     values={curr.name: curr.title for curr in data["currencies"]}
                 )
             }, methods={
@@ -1634,7 +1634,7 @@ class StoreTierController(a.AdminController):
                 "tier_name": a.field("Tier unique name", "text", "primary", "non-empty"),
                 "tier_product": a.field("Product ID", "text", "primary", "non-empty"),
                 "tier_prices": a.field(
-                    "Tier prices", "kv", "primary",
+                    "Tier prices (in cents)", "kv", "primary",
                     values={curr.name: curr.title for curr in data["currencies"]}
                 )
             }, methods={
@@ -1954,7 +1954,7 @@ class OrdersController(a.AdminController):
                 ],
                 "account": order.order.account_id,
                 "amount": order.order.amount,
-                "total": str(order.order.total) + " " + str(order.order.currency),
+                "total": str(order.order.total / 100) + " " + str(order.order.currency),
                 "status": [
                     {
                         OrdersModel.STATUS_NEW: a.status("New", "info", "check"),

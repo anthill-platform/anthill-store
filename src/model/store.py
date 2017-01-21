@@ -276,7 +276,7 @@ class StoreModel(Model):
                         currency: {
                             "title": currencies_data[currency]["title"],
                             "price": price,
-                            "format": currencies_data[currency]["format"].format(price),
+                            "format": currencies_data[currency]["format"],
                             "symbol": currencies_data[currency]["symbol"],
                             "label": currencies_data[currency]["label"],
                         } for currency, price in tier.prices.iteritems()

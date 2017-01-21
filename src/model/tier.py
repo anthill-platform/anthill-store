@@ -3,6 +3,8 @@ from tornado.gen import coroutine, Return
 
 from common.database import DatabaseError
 from common.model import Model
+from common import to_int
+
 import ujson
 
 
@@ -284,6 +286,17 @@ class TierModel(Model):
         else:
             raise TierError("Tier '{0}' already exists is such store.".format(tier_name))
 
+        if not isinstance(tier_prices, dict):
+            raise TierError("tier_prices should be a dict")
+
+        try:
+            tier_prices = {
+                k: to_int(v)
+                for k, v in tier_prices.iteritems()
+            }
+        except ValueError:
+            raise TierError("Bad price")
+
         try:
             tier_id = yield self.db.insert("""
                 INSERT INTO `tiers`
@@ -320,6 +333,18 @@ class TierModel(Model):
 
     @coroutine
     def update_tier(self, gamespace_id, tier_id, tier_name, tier_product, tier_prices):
+
+        if not isinstance(tier_prices, dict):
+            raise TierError("tier_prices should be a dict")
+
+        try:
+            tier_prices = {
+                k: to_int(v)
+                for k, v in tier_prices.iteritems()
+            }
+        except ValueError:
+            raise TierError("Bad price")
+
         try:
             yield self.db.execute("""
                 UPDATE `tiers`

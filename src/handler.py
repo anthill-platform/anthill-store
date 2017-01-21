@@ -77,15 +77,10 @@ class OrderHandler(AuthenticatedHandler):
         account_id = self.token.account
 
         try:
-            update = yield orders.update_order(gamespace_id, order_id, account_id)
+            result = yield orders.update_order(gamespace_id, order_id, account_id)
         except NoOrderError:
             raise HTTPError(404, "No such order")
         except OrderError as e:
             raise HTTPError(e.code, e.message)
 
-        result = {
-            "order_id": order_id
-        }
-
-        result.update(update)
         self.dumps(result)
