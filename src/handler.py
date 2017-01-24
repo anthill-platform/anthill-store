@@ -30,7 +30,9 @@ class StoreHandler(AuthenticatedHandler):
         except StoreNotFound:
             raise HTTPError(404, "Store not found")
 
-        self.dumps(store_data)
+        self.dumps({
+            "store": store_data
+        })
 
 
 class NewOrderHandler(AuthenticatedHandler):

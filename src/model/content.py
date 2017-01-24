@@ -3,6 +3,8 @@ from tornado.gen import coroutine, Return
 
 from common.database import DatabaseError
 from common.model import Model
+from common.validate import validate
+
 import ujson
 
 
@@ -28,6 +30,7 @@ class ContentModel(Model):
         return ["contents"]
 
     @coroutine
+    @validate(gamespace_id="int", content_id="int")
     def delete_content(self, gamespace_id, content_id):
         try:
             yield self.db.execute("""
@@ -39,6 +42,7 @@ class ContentModel(Model):
             raise ContentError("Failed to delete content: " + e.args[1])
 
     @coroutine
+    @validate(gamespace_id="int", content_name="str")
     def find_content(self, gamespace_id, content_name):
         try:
             result = yield self.db.get("""
@@ -55,6 +59,7 @@ class ContentModel(Model):
         raise Return(ContentAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int", content_id="int")
     def get_content(self, gamespace_id, content_id):
         try:
             result = yield self.db.get("""
@@ -71,6 +76,7 @@ class ContentModel(Model):
         raise Return(ContentAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int")
     def list_contents(self, gamespace_id):
         try:
             result = yield self.db.query("""
@@ -84,6 +90,7 @@ class ContentModel(Model):
         raise Return(map(ContentAdapter, result))
 
     @coroutine
+    @validate(gamespace_id="int", content_name="str", content_data="json")
     def new_content(self, gamespace_id, content_name, content_data):
 
         try:
@@ -105,6 +112,7 @@ class ContentModel(Model):
         raise Return(result)
 
     @coroutine
+    @validate(gamespace_id="int", content_id="int", content_name="str", content_data="json")
     def update_content(self, gamespace_id, content_id, content_name, content_data):
         try:
             yield self.db.execute("""

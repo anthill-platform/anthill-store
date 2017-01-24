@@ -2,10 +2,12 @@ from tornado.gen import coroutine, Return
 
 from common.database import DatabaseError
 from common.model import Model
+from common.validate import validate
 from category import CategoryAdapter
 
 import common
 import ujson
+
 
 class ItemAdapter(object):
     def __init__(self, record):
@@ -60,6 +62,7 @@ class ItemModel(Model):
         return self.db
 
     @coroutine
+    @validate(gamespace_id="int", item_id="int")
     def delete_item(self, gamespace_id, item_id):
         try:
             yield self.db.execute("""
@@ -71,6 +74,7 @@ class ItemModel(Model):
             raise ItemError("Failed to delete item: " + e.args[1])
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int", item_name="str")
     def find_item(self, gamespace_id, store_id, item_name):
         try:
             result = yield self.db.get("""
@@ -87,6 +91,7 @@ class ItemModel(Model):
         raise Return(ItemAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int", item_id="int")
     def get_item(self, gamespace_id, item_id):
         try:
             result = yield self.db.get("""
@@ -103,6 +108,7 @@ class ItemModel(Model):
         raise Return(ItemAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int")
     def list_items(self, gamespace_id, store_id):
         try:
             result = yield self.db.query("""
@@ -116,6 +122,8 @@ class ItemModel(Model):
         raise Return(map(ItemCategoryAdapter, result))
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int", category_id="int", item_name="str",
+              item_contents="json_dict_of_ints", item_data="json", item_method="str_name", method_data="json")
     def new_item(self, gamespace_id, store_id, category_id, item_name, item_contents,
                  item_data, item_method, method_data):
 
@@ -143,21 +151,20 @@ class ItemModel(Model):
         raise Return(item_id)
 
     @coroutine
+    @validate(gamespace_id="int", item_id="int", item_name="str", item_contents="json_dict_of_ints", item_data="json")
     def update_item(self, gamespace_id, item_id, item_name, item_contents, item_data):
 
-        item_contents = ItemModel.validate_item_contents(item_contents)
-        
         try:
             yield self.db.execute("""
                 UPDATE `items`
                 SET `item_name`=%s, `item_contents`=%s, `item_json`=%s
                 WHERE `item_id`=%s AND `gamespace_id`=%s;
-            """, item_name, ujson.dumps(item_contents), ujson.dumps(item_data),
-                                  item_id, gamespace_id)
+            """, item_name, ujson.dumps(item_contents), ujson.dumps(item_data), item_id, gamespace_id)
         except DatabaseError as e:
             raise ItemError("Failed to update item: " + e.args[1])
 
     @coroutine
+    @validate(gamespace_id="int", item_id="int", method_data="json")
     def update_item_billing(self, gamespace_id, item_id, method_data):
         try:
             yield self.db.execute("""
@@ -167,16 +174,6 @@ class ItemModel(Model):
             """, ujson.dumps(method_data), item_id, gamespace_id)
         except DatabaseError as e:
             raise ItemError("Failed to update item billing: " + e.args[1])
-
-    @staticmethod
-    def validate_item_contents(item_contents):
-        if not isinstance(item_contents, dict):
-            raise ItemError("Item contents should be a dict")
-
-        return {
-            k: common.to_int(v)
-            for k, v in item_contents.iteritems()
-        }
 
 
 class ItemNotFound(Exception):

@@ -19,6 +19,7 @@ from model.item import ItemModel
 from model.category import CategoryModel
 from model.tier import TierModel, CurrencyModel
 from model.order import OrdersModel
+from model.discount import DiscountsModel
 
 
 class StoreServer(common.server.Server):
@@ -47,11 +48,14 @@ class StoreServer(common.server.Server):
         self.currencies = CurrencyModel(self.db)
         self.stores = StoreModel(self.db, self.items, self.tiers, self.currencies)
         self.orders = OrdersModel(self, self.db, self.tiers)
+        self.discounts = DiscountsModel(self.db)
 
         admin.init()
 
     def get_models(self):
-        return [self.currencies, self.categories, self.stores, self.items, self.contents, self.tiers]
+        return [self.currencies, self.categories, self.stores,
+                self.items, self.contents, self.tiers, self.orders,
+                self.discounts]
 
     def get_admin(self):
         return {

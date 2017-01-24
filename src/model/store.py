@@ -3,21 +3,26 @@ from tornado.gen import coroutine, Return
 
 from common.database import DatabaseError
 from common.model import Model
+from common.validate import validate
+
+from discount import DiscountsModel
+
 import ujson
 
 
 class StoreAdapter(object):
-    def __init__(self, record):
-        self.store_id = record["store_id"]
-        self.name = record["store_name"]
-        self.data = record.get("json")
+    def __init__(self, data):
+        self.store_id = data["store_id"]
+        self.name = data["store_name"]
+        self.data = data.get("json")
+        self.discount_scheme = data.get("discount_scheme")
 
 
 class StoreComponentAdapter(object):
-    def __init__(self, record):
-        self.component_id = record["component_id"]
-        self.name = record["component"]
-        self.data = record["component_data"]
+    def __init__(self, data):
+        self.component_id = data["component_id"]
+        self.name = data["component"]
+        self.data = data["component_data"]
 
 
 class StoreComponentNotFound(Exception):
@@ -38,6 +43,7 @@ class StoreModel(Model):
         return ["stores", "store_components"]
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int")
     def delete_store(self, gamespace_id, store_id):
         try:
             with (yield self.db.acquire()) as db:
@@ -62,6 +68,7 @@ class StoreModel(Model):
             raise StoreError("Failed to delete store: " + e.args[1])
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int", component_id="int")
     def delete_store_component(self, gamespace_id, store_id, component_id):
         try:
             yield self.db.execute("""
@@ -73,6 +80,7 @@ class StoreModel(Model):
             raise StoreError("Failed to delete store component: " + e.args[1])
 
     @coroutine
+    @validate(gamespace_id="int", store_name="str_name")
     def find_store(self, gamespace_id, store_name):
         try:
             result = yield self.db.get("""
@@ -89,6 +97,7 @@ class StoreModel(Model):
         raise Return(StoreAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int", component_name="str_name")
     def find_store_component(self, gamespace_id, store_id, component_name):
         try:
             result = yield self.db.get("""
@@ -105,6 +114,7 @@ class StoreModel(Model):
         raise Return(StoreComponentAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int", store_name="str_name")
     def find_store_data(self, gamespace_id, store_name):
         try:
             result = yield self.db.get("""
@@ -123,6 +133,7 @@ class StoreModel(Model):
         raise Return(result)
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int")
     def get_store(self, gamespace_id, store_id):
         try:
             result = yield self.db.get("""
@@ -139,6 +150,7 @@ class StoreModel(Model):
         raise Return(StoreAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int", component_id="int")
     def get_store_component(self, gamespace_id, store_id, component_id):
         try:
             result = yield self.db.get("""
@@ -155,6 +167,7 @@ class StoreModel(Model):
         raise Return(StoreComponentAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int")
     def get_store_data(self, gamespace_id, store_id):
         result = yield self.db.get("""
             SELECT `json`
@@ -170,6 +183,7 @@ class StoreModel(Model):
         raise Return(result)
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int")
     def list_store_components(self, gamespace_id, store_id):
         try:
             result = yield self.db.query("""
@@ -183,6 +197,7 @@ class StoreModel(Model):
             raise Return(map(StoreComponentAdapter, result))
 
     @coroutine
+    @validate(gamespace_id="int")
     def list_stores(self, gamespace_id):
         result = yield self.db.query("""
             SELECT `store_name`, `store_id`
@@ -193,6 +208,7 @@ class StoreModel(Model):
         raise Return(map(StoreAdapter, result))
 
     @coroutine
+    @validate(gamespace_id="int", store_name="str_name")
     def new_store(self, gamespace_id, store_name):
 
         try:
@@ -205,19 +221,17 @@ class StoreModel(Model):
         try:
             store_id = yield self.db.insert("""
                 INSERT INTO `stores`
-                (`gamespace_id`, `store_name`, `json`)
-                VALUES (%s, %s, %s);
-            """, gamespace_id, store_name, "{}")
+                (`gamespace_id`, `store_name`, `json`, `discount_scheme`)
+                VALUES (%s, %s, %s, %s);
+            """, gamespace_id, store_name, "{}", ujson.dumps(DiscountsModel.DEFAULT_SCHEME))
         except DatabaseError as e:
             raise StoreError("Failed to add new store: " + e.args[1])
 
         raise Return(store_id)
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int", component_name="str_name", component_data="json_dict")
     def new_store_component(self, gamespace_id, store_id, component_name, component_data):
-
-        if not isinstance(component_data, dict):
-            raise StoreError("Component data should be a dict")
 
         try:
             yield self.find_store_component(gamespace_id, store_id, component_name)
@@ -238,6 +252,7 @@ class StoreModel(Model):
         raise Return(component_id)
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int")
     def publish_store(self, gamespace_id, store_id):
         store_items = yield self.items.list_items(gamespace_id, store_id)
         store_tiers = yield self.tiers.list_tiers(gamespace_id, store_id)
@@ -293,21 +308,20 @@ class StoreModel(Model):
         """, ujson.dumps(data), store_id, gamespace_id)
 
     @coroutine
-    def update_store(self, gamespace_id, store_id, store_name):
+    @validate(gamespace_id="int", store_id="int", store_name="str", discount_scheme="json_dict")
+    def update_store(self, gamespace_id, store_id, store_name, discount_scheme):
         try:
             yield self.db.execute("""
                 UPDATE `stores`
-                SET `store_name`=%s
+                SET `store_name`=%s, `discount_scheme`=%s
                 WHERE `store_id`=%s AND `gamespace_id`=%s;
-            """, store_name, store_id, gamespace_id)
+            """, store_name, ujson.dumps(discount_scheme), store_id, gamespace_id)
         except DatabaseError as e:
             raise StoreError("Failed to update content: " + e.args[1])
 
     @coroutine
+    @validate(gamespace_id="int", store_id="int", component_id="int", component_data="json_dict")
     def update_store_component(self, gamespace_id, store_id, component_id, component_data):
-
-        if not isinstance(component_data, dict):
-            raise StoreError("Component data should be a dict")
 
         try:
             yield self.get_store_component(gamespace_id, store_id, component_id)

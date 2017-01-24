@@ -3,6 +3,8 @@ from tornado.gen import coroutine, Return
 
 from common.database import DatabaseError
 from common.model import Model
+from common.validate import validate
+
 import ujson
 
 
@@ -28,6 +30,7 @@ class CategoryModel(Model):
         return ["categories", "categories_common"]
 
     @coroutine
+    @validate(gamespace_id="int", category_id="int")
     def delete_category(self, gamespace_id, category_id):
         try:
             yield self.db.execute("""
@@ -39,6 +42,7 @@ class CategoryModel(Model):
             raise CategoryError("Failed to delete category: " + e.args[1])
 
     @coroutine
+    @validate(gamespace_id="int", category_name="str")
     def find_category(self, gamespace_id, category_name):
         try:
             result = yield self.db.get("""
@@ -55,6 +59,7 @@ class CategoryModel(Model):
         raise Return(CategoryAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int", category_id="int")
     def get_category(self, gamespace_id, category_id):
         try:
             result = yield self.db.get("""
@@ -71,6 +76,7 @@ class CategoryModel(Model):
         raise Return(CategoryAdapter(result))
 
     @coroutine
+    @validate(gamespace_id="int")
     def get_common_scheme(self, gamespace_id):
         try:
             result = yield self.db.get("""
@@ -87,6 +93,7 @@ class CategoryModel(Model):
         raise Return(result["category_scheme"])
 
     @coroutine
+    @validate(gamespace_id="int")
     def list_categories(self, gamespace_id):
         try:
             result = yield self.db.query("""
@@ -100,6 +107,7 @@ class CategoryModel(Model):
         raise Return(map(CategoryAdapter, result))
 
     @coroutine
+    @validate(gamespace_id="int", category_name="str", category_scheme="json_dict")
     def new_category(self, gamespace_id, category_name, category_scheme):
 
         try:
@@ -121,6 +129,7 @@ class CategoryModel(Model):
         raise Return(result)
 
     @coroutine
+    @validate(gamespace_id="int", category_id="int", category_name="str", category_scheme="json_dict")
     def update_category(self, gamespace_id, category_id, category_name, category_scheme):
         try:
             yield self.db.execute("""
@@ -132,6 +141,7 @@ class CategoryModel(Model):
             raise CategoryError("Failed to update category: " + e.args[1])
 
     @coroutine
+    @validate(gamespace_id="int", scheme="json_dict")
     def update_common_scheme(self, gamespace_id, scheme):
 
         try:

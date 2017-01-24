@@ -2,6 +2,8 @@
 
 from tornado.gen import coroutine, Return
 
+from common.validate import validate
+
 import common.admin as a
 import common
 import ujson
@@ -214,12 +216,8 @@ class CategoryCommonController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
+    @validate(scheme="load_json_dict")
     def update(self, scheme):
-
-        try:
-            scheme = ujson.loads(scheme)
-        except (KeyError, ValueError):
-            raise a.ActionError("Corrupted JSON")
 
         categories = self.application.categories
 
@@ -248,6 +246,7 @@ class CategoryController(a.AdminController):
             message="Category has been deleted")
 
     @coroutine
+    @validate(category_id="int")
     def get(self, category_id):
 
         categories = self.application.categories
@@ -287,15 +286,10 @@ class CategoryController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
+    @validate(category_name="str_name", category_scheme="load_json_dict")
     def update(self, category_name, category_scheme):
 
         category_id = self.context.get("category_id")
-
-        try:
-            category_scheme = ujson.loads(category_scheme)
-        except (KeyError, ValueError):
-            raise a.ActionError("Corrupted JSON")
-
         categories = self.application.categories
 
         try:
@@ -311,6 +305,7 @@ class CategoryController(a.AdminController):
 
 class ChooseCategoryController(a.AdminController):
     @coroutine
+    @validate(category="int", billing_method="str_name")
     def apply(self, category, billing_method):
         raise a.Redirect(
             "new_item",
@@ -318,6 +313,7 @@ class ChooseCategoryController(a.AdminController):
             category_id=category, billing_method=billing_method)
 
     @coroutine
+    @validate(store_id="int")
     def get(self, store_id):
         categories = yield self.application.categories.list_categories(self.gamespace)
 
@@ -379,6 +375,7 @@ class ContentController(a.AdminController):
         raise a.Redirect("contents", message="Content has been deleted")
 
     @coroutine
+    @validate(content_id="int")
     def get(self, content_id):
 
         contents = self.application.contents
@@ -408,7 +405,8 @@ class ContentController(a.AdminController):
                 "delete": a.method("Delete this content", "danger")
             }, data=data),
             a.links("Navigate", [
-                a.link("contents", "Go back")
+                a.link("contents", "Go back"),
+                a.link("new_content", "Clone this content", icon="clone", clone=self.context.get("content_id"))
             ])
         ]
 
@@ -416,14 +414,10 @@ class ContentController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
+    @validate(content_name="str_name", content_json="load_json_dict")
     def update(self, content_name, content_json):
 
         content_id = self.context.get("content_id")
-
-        try:
-            content_json = ujson.loads(content_json)
-        except (KeyError, ValueError):
-            raise a.ActionError("Corrupted JSON")
 
         contents = self.application.contents
 
@@ -512,6 +506,7 @@ class CurrencyController(a.AdminController):
         raise a.Redirect("currencies", message="Currency has been deleted")
 
     @coroutine
+    @validate(currency_id="int")
     def get(self, currency_id):
 
         currencies = self.application.currencies
@@ -555,6 +550,8 @@ class CurrencyController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
+    @validate(currency_name="str_name", currency_title="str", currency_format="str",
+              currency_symbol="str", currency_label="str")
     def update(self, currency_name, currency_title, currency_format, currency_symbol, currency_label):
 
         currency_id = self.context.get("currency_id")
@@ -604,13 +601,8 @@ class IAPBillingMethodAdmin(BillingMethodAdmin):
 
 class NewCategoryController(a.AdminController):
     @coroutine
+    @validate(category_name="str_name", category_scheme="load_json_dict")
     def create(self, category_name, category_scheme):
-
-        try:
-            category_scheme = ujson.loads(category_scheme)
-        except (KeyError, ValueError):
-            raise a.ActionError("Corrupted JSON")
-
         categories = self.application.categories
 
         try:
@@ -646,13 +638,32 @@ class NewCategoryController(a.AdminController):
 
 class NewContentController(a.AdminController):
     @coroutine
+    @validate(clone="int_or_none")
+    def get(self, clone=None):
+
+        if clone:
+            contents = self.application.contents
+            try:
+                content = yield contents.get_content(self.gamespace, clone)
+            except ContentNotFound:
+                raise a.ActionError("No content to close from")
+            except ContentError as e:
+                raise a.ActionError("Failed to clone new content: " + e.args[0])
+
+            content_name = content.name
+            content_json = content.data
+        else:
+            content_name = ""
+            content_json = {}
+
+        raise Return({
+            "content_name": content_name,
+            "content_json": content_json
+        })
+
+    @coroutine
+    @validate(content_name="str_name", content_json="load_json_dict")
     def create(self, content_name, content_json):
-
-        try:
-            content_json = ujson.loads(content_json)
-        except (KeyError, ValueError):
-            raise a.ActionError("Corrupted JSON")
-
         contents = self.application.contents
 
         try:
@@ -674,8 +685,8 @@ class NewContentController(a.AdminController):
                 "content_name": a.field("Content unique ID", "text", "primary", "non-empty"),
                 "content_json": a.field("Content payload (any useful data)", "json", "primary", "non-empty")
             }, methods={
-                "create": a.method("Create", "primary")
-            }, data={"content_json": {}}),
+                "create": a.method("Clone" if self.context.get("clone") else "Create", "primary")
+            }, data=data),
             a.links("Navigate", [
                 a.link("contents", "Go back")
             ])
@@ -687,6 +698,8 @@ class NewContentController(a.AdminController):
 
 class NewCurrencyController(a.AdminController):
     @coroutine
+    @validate(currency_name="str_name", currency_title="str", currency_format="str",
+              currency_symbol="str", currency_label="str")
     def create(self, currency_name, currency_title, currency_format, currency_symbol, currency_label):
 
         currencies = self.application.currencies
@@ -751,6 +764,7 @@ class NewTierComponentController(a.AdminController):
             tier_id=tier_id)
 
     @coroutine
+    @validate(tier_id="int")
     def get(self, tier_id):
         stores = self.application.stores
         tiers = self.application.tiers
@@ -841,6 +855,7 @@ class NewTierComponentController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
+    @validate(component="str_name")
     def select(self, component):
         stores = self.application.stores
         tiers = self.application.tiers
@@ -892,6 +907,7 @@ class NewStoreComponentController(a.AdminController):
             store_id=store_id)
 
     @coroutine
+    @validate(store_id="int")
     def get(self, store_id):
 
         stores = self.application.stores
@@ -974,6 +990,7 @@ class NewStoreComponentController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
+    @validate(component="str_name")
     def select(self, component):
 
         stores = self.application.stores
@@ -994,6 +1011,7 @@ class NewStoreComponentController(a.AdminController):
 
 class NewStoreController(a.AdminController):
     @coroutine
+    @validate(store_name="str_name")
     def create(self, store_name):
         stores = self.application.stores
 
@@ -1028,7 +1046,8 @@ class NewStoreController(a.AdminController):
 
 class NewStoreItemController(a.AdminController):
     @coroutine
-    def create(self, item_name, item_data, item_contents):
+    @validate(item_name="str_name", item_data="load_json", item_contents="load_json_dict_of_ints")
+    def create(self, item_name, item_data, item_contents, **method_data):
         items = self.application.items
 
         billing_method = self.context.get("billing_method")
@@ -1036,18 +1055,17 @@ class NewStoreItemController(a.AdminController):
         if not BillingMethods.has_method(billing_method):
             raise a.ActionError("No such billing method")
 
-        try:
-            item_data = ujson.loads(item_data)
-            item_contents = ujson.loads(item_contents)
-        except (KeyError, ValueError):
-            raise a.ActionError("Corrupted JSON")
-
         store_id = self.context.get("store_id")
         category_id = self.context.get("category_id")
 
+        method_instance = yield StoreItemController.get_method(billing_method, self, store_id)
+        method_instance.update(**method_data)
+        billing_data = method_instance.dump()
+
         try:
-            item_id = yield items.new_item(self.gamespace, store_id, category_id, item_name, item_contents, item_data,
-                                           billing_method, {})
+            item_id = yield items.new_item(
+                self.gamespace, store_id, category_id, item_name, item_contents, item_data,
+                billing_method, billing_data)
         except StoreError as e:
             raise a.ActionError("Failed to create new item: " + e.args[0])
 
@@ -1057,14 +1075,34 @@ class NewStoreItemController(a.AdminController):
             item_id=item_id)
 
     @coroutine
-    def get(self, store_id, category_id, billing_method):
+    @validate(store_id="int", category_id="int", billing_method="str_name", clone="int_or_none")
+    def get(self, store_id, category_id, billing_method, clone=None):
 
         stores = self.application.stores
         categories = self.application.categories
         contents = self.application.contents
+        items = self.application.items
 
         if not BillingMethods.has_method(billing_method):
             raise a.ActionError("No such billing method")
+
+        if clone:
+            try:
+                item = yield items.get_item(self.gamespace, clone)
+            except ItemNotFound:
+                raise a.ActionError("No item to clone from")
+            except ItemError as e:
+                raise a.ActionError("Failed to clone item: " + e.message)
+
+            item_name = item.name
+            item_data = item.data
+            item_contents = item.contents
+            item_method_data = item.method_data
+        else:
+            item_name = ""
+            item_data = {}
+            item_contents = {}
+            item_method_data = {}
 
         try:
             store = yield stores.get_store(self.gamespace, store_id)
@@ -1086,32 +1124,47 @@ class NewStoreItemController(a.AdminController):
         category_schema = category.scheme
         common.update(scheme, category_schema)
 
-        raise a.Return({
+        method_instance = yield StoreItemController.get_method(billing_method, self, store_id)
+        method_instance.load(item_method_data)
+
+        data = {
             "category_name": category.name,
             "store_name": store.name,
             "scheme": scheme,
             "content_items": content_items,
-            "item_contents": {}
-        })
+            "billing_fields": method_instance.render(),
+            "item_name": item_name,
+            "item_data": item_data,
+            "item_contents": item_contents
+        }
+
+        data.update(method_instance.get())
+
+        raise a.Return(data)
 
     def render(self, data):
+
+        fields = {
+            "item_name": a.field("Item unique name", "text", "primary", "non-empty"),
+            "item_data": a.field(
+                "Item properties", "dorn", "primary",
+                schema=data["scheme"]
+            ),
+            "item_contents": a.field(
+                "Item contents (entities, delivered to the user for the purchase)", "kv", "primary",
+                values={item.name: item.name for item in data["content_items"]}
+            )
+        }
+
+        fields.update(data["billing_fields"])
+
         return [
             a.breadcrumbs([
                 a.link("stores", "Stores"),
                 a.link("store", data["store_name"], store_id=self.context.get("store_id"))
             ], "Add new item to store"),
-            a.form("New item (of category '{0}')".format(data["category_name"]), fields={
-                "item_name": a.field("Item unique name", "text", "primary", "non-empty"),
-                "item_data": a.field(
-                    "Item properties", "dorn", "primary",
-                    schema=data["scheme"]
-                ),
-                "item_contents": a.field(
-                    "Item contents (entities, delivered to the user for the purchase)", "kv", "primary",
-                    values={item.name: item.name for item in data["content_items"]}
-                )
-            }, methods={
-                "create": a.method("Create", "primary")
+            a.form("New item (of category '{0}')".format(data["category_name"]), fields=fields, methods={
+                "create": a.method("Clone" if self.context.get("clone") else "Create", "primary")
             }, data=data),
             a.links("Navigate", [
                 a.link("contents", "Go back")
@@ -1124,15 +1177,10 @@ class NewStoreItemController(a.AdminController):
 
 class NewStoreTierController(a.AdminController):
     @coroutine
+    @validate(tier_name="str_name", tier_product="str", tier_prices="load_json_dict_of_ints")
     def create(self, tier_name, tier_product, tier_prices):
 
         tiers = self.application.tiers
-
-        try:
-            tier_prices = ujson.loads(tier_prices)
-        except (KeyError, ValueError):
-            raise a.ActionError("Corrupted JSON")
-
         store_id = self.context.get("store_id")
 
         try:
@@ -1146,6 +1194,7 @@ class NewStoreTierController(a.AdminController):
             tier_id=tier_id)
 
     @coroutine
+    @validate(store_id="int")
     def get(self, store_id):
 
         stores = self.application.stores
@@ -1234,6 +1283,7 @@ class RootAdminController(a.AdminController):
 
 class StoreController(a.AdminController):
     @coroutine
+    @validate(store_id="int")
     def get(self, store_id):
 
         stores = self.application.stores
@@ -1346,6 +1396,7 @@ class StoreItemController(a.AdminController):
             store_id=store_id)
 
     @coroutine
+    @validate(item_id="int")
     def get(self, item_id):
 
         stores = self.application.stores
@@ -1384,11 +1435,12 @@ class StoreItemController(a.AdminController):
         item_method = item.method
 
         item_method_data = item.method_data
-        method_instance = yield self.get_method(item_method, store_id)
+        method_instance = yield StoreItemController.get_method(item_method, self, store_id)
         method_instance.load(item_method_data)
 
         raise a.Return({
             "category_name": category.name,
+            "category_id": category_id,
             "store_name": store.name,
             "scheme": scheme,
             "item_name": item.name,
@@ -1401,10 +1453,11 @@ class StoreItemController(a.AdminController):
             "billing_data": method_instance.get()
         })
 
+    @staticmethod
     @coroutine
-    def get_method(self, item_method, store_id):
+    def get_method(item_method, action, store_id):
         try:
-            method_instance = BillingMethods.method(item_method, self, store_id)
+            method_instance = BillingMethods.method(item_method, action, store_id)
         except KeyError:
             raise a.ActionError("No such billing method")
 
@@ -1437,7 +1490,13 @@ class StoreItemController(a.AdminController):
                    fields=data["billing_fields"],
                    methods={"update_billing": a.method("Update", "primary")}, data=data["billing_data"]),
             a.links("Navigate", [
-                a.link("store", "Go back", store_id=data.get("store_id"))
+                a.link("store", "Go back", store_id=data.get("store_id")),
+                a.link("new_item", "Clone this item",
+                       icon="clone",
+                       store_id=data.get("store_id"),
+                       clone=self.context.get("item_id"),
+                       category_id=data.get("category_id"),
+                       billing_method=data.get("billing_method"))
             ])
         ]
 
@@ -1446,14 +1505,9 @@ class StoreItemController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
+    @validate(item_name="str_name", item_data="load_json", item_contents="load_json_dict_of_ints")
     def update(self, item_name, item_data, item_contents):
         items = self.application.items
-
-        try:
-            item_data = ujson.loads(item_data)
-            item_contents = ujson.loads(item_contents)
-        except (KeyError, ValueError):
-            raise a.ActionError("Corrupted JSON")
 
         item_id = self.context.get("item_id")
 
@@ -1482,7 +1536,7 @@ class StoreItemController(a.AdminController):
         item_method = item.method
         item_method_data = item.method_data
 
-        method_instance = yield self.get_method(item_method, store_id)
+        method_instance = yield StoreItemController.get_method(item_method, self, store_id)
         method_instance.load(item_method_data)
         method_instance.update(**data)
         billing_data = method_instance.dump()
@@ -1571,6 +1625,7 @@ class StoreTierController(a.AdminController):
             tier_id=tier_id)
 
     @coroutine
+    @validate(tier_id="int")
     def get(self, tier_id):
 
         stores = self.application.stores
@@ -1664,15 +1719,11 @@ class StoreTierController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
+    @validate(tier_name="str_name", tier_product="str", tier_prices="load_json_dict_of_ints")
     def update(self, tier_name, tier_product, tier_prices):
 
         tiers = self.application.tiers
         tier_id = self.context.get("tier_id")
-
-        try:
-            tier_prices = ujson.loads(tier_prices)
-        except (KeyError, ValueError):
-            raise a.ActionError("Corrupted JSON")
 
         try:
             yield tiers.update_tier(self.gamespace, tier_id, tier_name, tier_product, tier_prices)
@@ -1687,6 +1738,7 @@ class StoreTierController(a.AdminController):
 
 class StoreTiersController(a.AdminController):
     @coroutine
+    @validate(store_id="int")
     def get(self, store_id):
 
         stores = self.application.stores
@@ -1714,10 +1766,6 @@ class StoreTiersController(a.AdminController):
             ], "Tiers"),
             a.content("Items", [
                 {
-                    "id": "edit",
-                    "title": "Edit"
-                },
-                {
                     "id": "name",
                     "title": "Name"
                 },
@@ -1729,8 +1777,7 @@ class StoreTiersController(a.AdminController):
                     "id": "actions",
                     "title": "Actions"
                 }
-            ], [{"edit": [a.button("tier", "Edit", "default", _method="get", tier_id=tier.tier_id)],
-                 "name": tier.name,
+            ], [{"name": [a.link("tier", str(tier.name), icon="apple", tier_id=tier.tier_id)],
                  "product": tier.product,
                  "actions": [a.button("tier", "Delete", "danger", _method="delete", tier_id=tier.tier_id)]
                  } for tier in data["tiers"]
@@ -1811,6 +1858,7 @@ class StoreSettingsController(a.AdminController):
             store_id=store_id)
 
     @coroutine
+    @validate(store_id="int")
     def get(self, store_id):
 
         stores = self.application.stores
@@ -1833,12 +1881,11 @@ class StoreSettingsController(a.AdminController):
                 component_admin.load(component.data)
                 components[component.component_id] = component_admin
 
-        result = {
+        raise a.Return({
             "store_name": store.name,
-            "store_components": components
-        }
-
-        raise a.Return(result)
+            "store_components": components,
+            "discount_scheme": store.discount_scheme
+        })
 
     @coroutine
     def get_component(self, component, store_id):
@@ -1869,7 +1916,8 @@ class StoreSettingsController(a.AdminController):
 
         result.extend([
             a.form("Store info", fields={
-                "store_name": a.field("Store unique ID", "text", "primary", "non-empty")
+                "store_name": a.field("Store unique ID", "text", "primary", "non-empty", order=1),
+                "discount_scheme": a.field("Discounts scheme", "json", "primary", "non-empty", order=2)
             }, methods={
                 "update": a.method("Update", "primary")
             }, data=data),
@@ -1891,13 +1939,14 @@ class StoreSettingsController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    def update(self, store_name):
+    @validate(store_name="str_name", discount_scheme="load_json_dict")
+    def update(self, store_name, discount_scheme):
 
         store_id = self.context.get("store_id")
         stores = self.application.stores
 
         try:
-            yield stores.update_store(self.gamespace, store_id, store_name)
+            yield stores.update_store(self.gamespace, store_id, store_name, discount_scheme)
         except StoreError as e:
             raise a.ActionError("Failed to update store: " + e.args[0])
 
@@ -2042,6 +2091,8 @@ class OrdersController(a.AdminController):
         raise a.Redirect("orders", store_id=store_id, **filters)
 
     @coroutine
+    @validate(store_id="int", page="int_or_none", order_item="int_or_none", order_tier="int_or_none",
+              order_account="int_or_none", order_status="str_or_none", order_currency="str_or_none")
     def get(self,
             store_id,
             page=1,

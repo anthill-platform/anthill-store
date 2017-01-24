@@ -10,6 +10,7 @@ from content import ContentAdapter
 
 from common.model import Model
 from common.database import DatabaseError
+from common.validate import validate
 from common import to_int
 
 
@@ -234,6 +235,7 @@ class OrdersModel(Model):
         raise Return(StoreComponentItemAdapter(data))
 
     @coroutine
+    @validate(gamespace_id="int", order_id="int")
     def get_order(self, gamespace_id, order_id, db=None):
         try:
             data = yield (db or self.db).get(
@@ -252,6 +254,7 @@ class OrdersModel(Model):
         raise Return(OrderAdapter(data))
 
     @coroutine
+    @validate(gamespace_id="int", order_id="int")
     def get_order_info(self, gamespace_id, order_id, db=None):
         try:
             data = yield (db or self.db).get(
@@ -275,6 +278,7 @@ class OrdersModel(Model):
         raise Return(OrderStoreComponentItemAdapter(data))
 
     @coroutine
+    @validate(gamespace_id="int", order_id="int", status="str_name", info="json")
     def update_order_info(self, gamespace_id, order_id, status, info, db=None):
         try:
             yield (db or self.db).execute(
@@ -287,6 +291,7 @@ class OrdersModel(Model):
             raise OrderError(500, e.args[1])
 
     @coroutine
+    @validate(gamespace_id="int", order_id="int", status="str_name")
     def update_order_status(self, gamespace_id, order_id, status, db=None):
         try:
             yield (db or self.db).execute(
@@ -302,6 +307,8 @@ class OrdersModel(Model):
         return OrderQuery(gamespace, store_id, self.db)
 
     @coroutine
+    @validate(gamespace_id="int", account_id="int", store="str_name", component="str_name", item="str_name",
+              currency="str_name", amount="int", env="json")
     def new_order(self, gamespace_id, account_id, store, component, item, currency, amount, env):
 
         if (not isinstance(amount, int)) or amount <= 0:
@@ -439,6 +446,7 @@ class OrdersModel(Model):
         raise OrderError(423, "Order has been succeeded already.")
 
     @coroutine
+    @validate(gamespace_id="int", order_id="int", account_id="int")
     def update_order(self, gamespace_id, order_id, account_id):
 
         with (yield self.db.acquire()) as db:

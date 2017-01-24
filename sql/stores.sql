@@ -3,5 +3,6 @@ CREATE TABLE `stores` (
   `gamespace_id` int(11) NOT NULL,
   `store_name` varchar(255) DEFAULT NULL,
   `json` json NOT NULL,
+  `discount_scheme` json NOT NULL,
   PRIMARY KEY (`store_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
