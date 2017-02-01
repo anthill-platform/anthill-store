@@ -5,6 +5,7 @@ from tornado.web import HTTPError
 
 from common.access import scoped, AccessToken
 from common.handler import AuthenticatedHandler
+from common.validate import ValidationError
 from common import to_int
 
 from model.store import StoreNotFound
@@ -29,6 +30,8 @@ class StoreHandler(AuthenticatedHandler):
 
         except StoreNotFound:
             raise HTTPError(404, "Store not found")
+        except ValidationError as e:
+            raise HTTPError(400, e.message)
 
         self.dumps({
             "store": store_data
@@ -63,6 +66,8 @@ class NewOrderHandler(AuthenticatedHandler):
                 currency_name, amount, env)
         except OrderError as e:
             raise HTTPError(e.code, e.message)
+        except ValidationError as e:
+            raise HTTPError(400, e.message)
 
         self.dumps({
             "order_id": order_id
@@ -84,5 +89,7 @@ class OrderHandler(AuthenticatedHandler):
             raise HTTPError(404, "No such order")
         except OrderError as e:
             raise HTTPError(e.code, e.message)
+        except ValidationError as e:
+            raise HTTPError(400, e.message)
 
         self.dumps(result)

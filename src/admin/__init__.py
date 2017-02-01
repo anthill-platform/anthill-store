@@ -169,7 +169,7 @@ class CategoriesController(a.AdminController):
                 for item in data["items"]
                 ]),
             a.links("Navigate", [
-                a.link("index", "Go back"),
+                a.link("index", "Go back", icon="chevron-left"),
                 a.link("new_category", "Create category", icon="plus"),
                 a.link("category_common", "Edit common scheme")
             ])
@@ -207,7 +207,7 @@ class CategoryCommonController(a.AdminController):
                 "update": a.method("Update", "primary")
             }, data=data),
             a.links("Navigate", [
-                a.link("categories", "Go back"),
+                a.link("categories", "Go back", icon="chevron-left"),
                 a.link("https://spacetelescope.github.io/understanding-json-schema/index.html", "See docs", icon="book")
             ])
         ]
@@ -276,7 +276,7 @@ class CategoryController(a.AdminController):
                 "delete": a.method("Delete this category", "danger")
             }, data=data),
             a.links("Navigate", [
-                a.link("categories", "Go back"),
+                a.link("categories", "Go back", icon="chevron-left"),
                 a.link("category_common", "Edit common scheme"),
                 a.link("https://spacetelescope.github.io/understanding-json-schema/index.html", "See docs", icon="book")
             ])
@@ -351,7 +351,7 @@ class ChooseCategoryController(a.AdminController):
                 }, data=data
             ),
             a.links("Navigation", links=[
-                a.link("stores", "Go back"),
+                a.link("stores", "Go back", icon="chevron-left"),
                 a.link("categories", "Manage categories", "list-alt")
             ])
         ]
@@ -405,7 +405,7 @@ class ContentController(a.AdminController):
                 "delete": a.method("Delete this content", "danger")
             }, data=data),
             a.links("Navigate", [
-                a.link("contents", "Go back"),
+                a.link("contents", "Go back", icon="chevron-left"),
                 a.link("new_content", "Clone this content", icon="clone", clone=self.context.get("content_id"))
             ])
         ]
@@ -452,7 +452,7 @@ class ContentsController(a.AdminController):
                 for item in data["items"]
                 ]),
             a.links("Navigate", [
-                a.link("index", "Go back"),
+                a.link("index", "Go back", icon="chevron-left"),
                 a.link("new_content", "Create content", icon="plus")
             ])
         ]
@@ -482,7 +482,7 @@ class CurrenciesController(a.AdminController):
                 for item in data["items"]
                 ]),
             a.links("Navigate", [
-                a.link("index", "Go back"),
+                a.link("index", "Go back", icon="chevron-left"),
                 a.link("new_currency", "Create currency", icon="plus")
             ])
         ]
@@ -542,7 +542,7 @@ class CurrencyController(a.AdminController):
                 "delete": a.method("Delete this currency", "danger")
             }, data=data),
             a.links("Navigate", [
-                a.link("currencies", "Go back")
+                a.link("currencies", "Go back", icon="chevron-left")
             ])
         ]
 
@@ -627,7 +627,7 @@ class NewCategoryController(a.AdminController):
                 "create": a.method("Create", "primary")
             }, data=data),
             a.links("Navigate", [
-                a.link("categories", "Go back"),
+                a.link("categories", "Go back", icon="chevron-left"),
                 a.link("https://spacetelescope.github.io/understanding-json-schema/index.html", "See docs", icon="book")
             ])
         ]
@@ -688,7 +688,7 @@ class NewContentController(a.AdminController):
                 "create": a.method("Clone" if self.context.get("clone") else "Create", "primary")
             }, data=data),
             a.links("Navigate", [
-                a.link("contents", "Go back")
+                a.link("contents", "Go back", icon="chevron-left")
             ])
         ]
 
@@ -730,7 +730,7 @@ class NewCurrencyController(a.AdminController):
                 "create": a.method("Create", "primary")
             }, data={"currency_format": "${0}", "currency_symbol": "$"}),
             a.links("Navigate", [
-                a.link("currencies", "Go back")
+                a.link("currencies", "Go back", icon="chevron-left")
             ])
         ]
 
@@ -845,7 +845,7 @@ class NewTierComponentController(a.AdminController):
 
         result.extend([
             a.links("Navigate", [
-                a.link("tier", "Go back", tier_id=tier_id),
+                a.link("tier", "Go back", icon="chevron-left", tier_id=tier_id),
             ])
         ])
 
@@ -980,7 +980,7 @@ class NewStoreComponentController(a.AdminController):
 
         result.extend([
             a.links("Navigate", [
-                a.link("store_settings", "Go back", store_id=store_id),
+                a.link("store_settings", "Go back", icon="chevron-left", store_id=store_id),
             ])
         ])
 
@@ -1036,7 +1036,7 @@ class NewStoreController(a.AdminController):
                 "create": a.method("Create", "primary")
             }, data=data),
             a.links("Navigate", [
-                a.link("contents", "Go back")
+                a.link("contents", "Go back", icon="chevron-left")
             ])
         ]
 
@@ -1167,7 +1167,7 @@ class NewStoreItemController(a.AdminController):
                 "create": a.method("Clone" if self.context.get("clone") else "Create", "primary")
             }, data=data),
             a.links("Navigate", [
-                a.link("contents", "Go back")
+                a.link("contents", "Go back", icon="chevron-left")
             ])
         ]
 
@@ -1229,7 +1229,7 @@ class NewStoreTierController(a.AdminController):
                 "create": a.method("Create", "primary")
             }, data=data),
             a.links("Navigate", [
-                a.link("contents", "Go back"),
+                a.link("contents", "Go back", icon="chevron-left"),
                 a.link("currencies", "Edit currencies", icon="bitcoin")
             ])
         ]
@@ -1359,7 +1359,7 @@ class StoreController(a.AdminController):
                 "publish": a.method("Publish this store", "success")
             }, data=data),
             a.links("Navigate", [
-                a.link("stores", "Go back"),
+                a.link("stores", "Go back", icon="chevron-left"),
                 a.link("tiers", "Edit tiers", icon="apple", store_id=self.context.get("store_id")),
                 a.link("orders", "Orders", icon="money", store_id=self.context.get("store_id")),
                 a.link("store_settings", "Store settings", icon="cog", store_id=self.context.get("store_id")),
@@ -1490,7 +1490,7 @@ class StoreItemController(a.AdminController):
                    fields=data["billing_fields"],
                    methods={"update_billing": a.method("Update", "primary")}, data=data["billing_data"]),
             a.links("Navigate", [
-                a.link("store", "Go back", store_id=data.get("store_id")),
+                a.link("store", "Go back", icon="chevron-left", store_id=data.get("store_id")),
                 a.link("new_item", "Clone this item",
                        icon="clone",
                        store_id=data.get("store_id"),
@@ -1706,7 +1706,7 @@ class StoreTierController(a.AdminController):
 
         result.extend([
             a.links("Navigate", [
-                a.link("store", "Go back", store_id=data["store_id"]),
+                a.link("store", "Go back", icon="chevron-left", store_id=data["store_id"]),
                 a.link("currencies", "Edit currencies", icon="bitcoin"),
                 a.link("new_tier_component", "New component", icon="briefcase",
                        tier_id=self.context.get("tier_id"))
@@ -1783,7 +1783,7 @@ class StoreTiersController(a.AdminController):
                  } for tier in data["tiers"]
                 ], "default"),
             a.links("Navigate", [
-                a.link("store", "Go back", store_id=self.context.get("store_id")),
+                a.link("store", "Go back", icon="chevron-left", store_id=self.context.get("store_id")),
                 a.link("currencies", "Edit currencies", icon="bitcoin"),
                 a.link("new_tier", "Add new tier", icon="plus", store_id=self.context.get("store_id")),
             ])
@@ -1928,7 +1928,7 @@ class StoreSettingsController(a.AdminController):
                 "delete": a.method("Delete this store", "danger")
             }, data=data),
             a.links("Navigate", [
-                a.link("store", "Go back", store_id=store_id),
+                a.link("store", "Go back", icon="chevron-left", store_id=store_id),
                 a.link("new_store_component", "New component", icon="briefcase", store_id=store_id),
             ])
         ])
@@ -1976,7 +1976,7 @@ class StoresController(a.AdminController):
                 for item in data["stores"]
                 ]),
             a.links("Navigate", [
-                a.link("index", "Go back"),
+                a.link("index", "Go back", icon="chevron-left"),
                 a.link("new_store", "Create a new store", icon="plus")
             ])
         ]
@@ -2067,7 +2067,7 @@ class OrdersController(a.AdminController):
                 "filter": a.method("Filter", "primary")
             }, data=data, icon="filter"),
             a.links("Navigate", [
-                a.link("store", "Go back", store_id=self.context.get("store_id"))
+                a.link("store", "Go back", icon="chevron-left", store_id=self.context.get("store_id"))
             ])
         ]
 
