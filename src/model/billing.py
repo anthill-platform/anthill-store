@@ -1,4 +1,6 @@
 
+from common import to_int
+
 
 class BillingMethod(object):
     def __init__(self):
@@ -34,7 +36,7 @@ class OfflineBillingMethod(BillingMethod):
     def dump(self):
         return {
             "currency": self.currency,
-            "amount": self.amount
+            "amount": to_int(self.amount)
         }
 
     def load(self, data):
