@@ -1322,7 +1322,7 @@ class StoreItemController(a.AdminController):
 
     @coroutine
     @validate(item_name="str_name", item_data="load_json")
-    def update(self, item_name, item_data):
+    def update(self, item_name, item_data, **ignored):
         items = self.application.items
 
         item_id = self.context.get("item_id")
