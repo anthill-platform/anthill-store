@@ -6,7 +6,6 @@ from item import ItemAdapter
 from billing import IAPBillingMethod
 from tier import TierError, TierNotFound, TierAdapter
 from components import StoreComponents, StoreComponentError
-from content import ContentAdapter
 
 from common.model import Model
 from common.database import DatabaseError
@@ -399,35 +398,12 @@ class OrdersModel(Model):
                 "order": data.order.order_id,
                 "account": account_id,
                 "status": OrdersModel.STATUS_SUCCEEDED,
-                "contents": data.item.contents,
                 "amount": data.order.amount
             })
 
             yield self.update_order_status(gamespace_id, data.order.order_id, OrdersModel.STATUS_SUCCEEDED, db=db)
 
-            content_names = [filter(str, data.item.contents.keys())]
-            contents = []
-
-            if content_names:
-                try:
-                    contents = yield db.query(
-                        """
-                            SELECT `content_name`, `content_json`
-                            FROM `contents`
-                            WHERE `gamespace_id`=%s AND `content_name` IN %s;
-                        """, gamespace_id, content_names)
-                except DatabaseError as e:
-                    logging.exception("Failed to fetch contents")
-                    contents = []
-
             raise Return({
-                "contents": {
-                    content.name: {
-                        "payload": content.data,
-                        "amount": to_int(data.item.contents.get(content.name, 1), 1)
-                    }
-                    for content in map(ContentAdapter, contents)
-                },
                 "item": data.item.name,
                 "amount": data.order.amount,
                 "currency": data.order.currency,

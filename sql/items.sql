@@ -7,7 +7,6 @@ CREATE TABLE `items` (
   `item_json` json NOT NULL,
   `item_method` varchar(255) NOT NULL DEFAULT '',
   `item_method_data` json NOT NULL,
-  `item_contents` json NOT NULL,
   PRIMARY KEY (`item_id`),
   UNIQUE KEY `item_name` (`item_name`),
   KEY `item_category` (`item_category`),

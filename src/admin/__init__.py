@@ -6,16 +6,15 @@ from common.validate import validate
 
 import common.admin as a
 import common
-import ujson
-import math
 
-from model.content import ContentError, ContentNotFound
 from model.store import StoreError, StoreNotFound, StoreComponentNotFound
 from model.category import CategoryError, CategoryNotFound
 from model.item import ItemError, ItemNotFound
 from model.billing import OfflineBillingMethod, IAPBillingMethod
 from model.tier import TierModel, TierError, TierNotFound, CurrencyError, CurrencyNotFound
 from model.order import OrderQueryError, OrdersModel
+
+import math
 
 
 class StoreAdminComponents(object):
@@ -171,7 +170,7 @@ class CategoriesController(a.AdminController):
             a.links("Navigate", [
                 a.link("index", "Go back", icon="chevron-left"),
                 a.link("new_category", "Create category", icon="plus"),
-                a.link("category_common", "Edit common scheme")
+                a.link("category_common", "Edit common scheme", icon="bars")
             ])
         ]
 
@@ -277,7 +276,7 @@ class CategoryController(a.AdminController):
             }, data=data),
             a.links("Navigate", [
                 a.link("categories", "Go back", icon="chevron-left"),
-                a.link("category_common", "Edit common scheme"),
+                a.link("category_common", "Edit common scheme", icon="bars"),
                 a.link("https://spacetelescope.github.io/understanding-json-schema/index.html", "See docs", icon="book")
             ])
         ]
@@ -360,107 +359,6 @@ class ChooseCategoryController(a.AdminController):
         return ["store_admin"]
 
 
-class ContentController(a.AdminController):
-    @coroutine
-    def delete(self, **ignored):
-
-        content_id = self.context.get("content_id")
-        contents = self.application.contents
-
-        try:
-            yield contents.delete_content(self.gamespace, content_id)
-        except ContentError as e:
-            raise a.ActionError("Failed to delete content: " + e.args[0])
-
-        raise a.Redirect("contents", message="Content has been deleted")
-
-    @coroutine
-    @validate(content_id="int")
-    def get(self, content_id):
-
-        contents = self.application.contents
-
-        try:
-            content = yield contents.get_content(self.gamespace, content_id)
-        except ContentNotFound:
-            raise a.ActionError("No such content")
-
-        result = {
-            "content_name": content.name,
-            "content_json": content.data
-        }
-
-        raise a.Return(result)
-
-    def render(self, data):
-        return [
-            a.breadcrumbs([
-                a.link("contents", "Contents")
-            ], "Content"),
-            a.form("Update content", fields={
-                "content_name": a.field("Content unique ID", "text", "primary", "non-empty"),
-                "content_json": a.field("Content payload (any useful data)", "json", "primary", "non-empty")
-            }, methods={
-                "update": a.method("Update", "primary"),
-                "delete": a.method("Delete this content", "danger")
-            }, data=data),
-            a.links("Navigate", [
-                a.link("contents", "Go back", icon="chevron-left"),
-                a.link("new_content", "Clone this content", icon="clone", clone=self.context.get("content_id"))
-            ])
-        ]
-
-    def access_scopes(self):
-        return ["store_admin"]
-
-    @coroutine
-    @validate(content_name="str_name", content_json="load_json_dict")
-    def update(self, content_name, content_json):
-
-        content_id = self.context.get("content_id")
-
-        contents = self.application.contents
-
-        try:
-            yield contents.update_content(self.gamespace, content_id, content_name, content_json)
-        except ContentError as e:
-            raise a.ActionError("Failed to update content: " + e.args[0])
-
-        raise a.Redirect(
-            "content",
-            message="Content has been updated",
-            content_id=content_id)
-
-
-class ContentsController(a.AdminController):
-    @coroutine
-    def get(self):
-        contents = self.application.contents
-        items = yield contents.list_contents(self.gamespace)
-
-        result = {
-            "items": items
-        }
-
-        raise a.Return(result)
-
-    def render(self, data):
-        return [
-            a.breadcrumbs([], "Contents"),
-            a.links("Items", [
-                a.link("content", item.name, icon="paper-plane", content_id=item.content_id)
-                for item in data["items"]
-                ]),
-            a.links("Navigate", [
-                a.link("index", "Go back", icon="chevron-left"),
-                a.link("new_content", "Create content", icon="plus")
-            ])
-        ]
-
-    def access_scopes(self):
-        return ["store_admin"]
-
-
 class CurrenciesController(a.AdminController):
     @coroutine
     def get(self):
@@ -512,16 +410,16 @@ class CurrencyController(a.AdminController):
         currencies = self.application.currencies
 
         try:
-            content = yield currencies.get_currency(self.gamespace, currency_id)
+            currency = yield currencies.get_currency(self.gamespace, currency_id)
         except CurrencyNotFound:
             raise a.ActionError("No such currency")
 
         result = {
-            "currency_name": content.name,
-            "currency_title": content.title,
-            "currency_format": content.format,
-            "currency_symbol": content.symbol,
-            "currency_label": content.label
+            "currency_name": currency.name,
+            "currency_title": currency.title,
+            "currency_format": currency.format,
+            "currency_symbol": currency.symbol,
+            "currency_label": currency.label
         }
 
         raise a.Return(result)
@@ -530,7 +428,7 @@ class CurrencyController(a.AdminController):
         return [
             a.breadcrumbs([
                 a.link("currencies", "Currencies")
-            ], "Currency"),
+            ], data["currency_title"]),
             a.form("Update currency", fields={
                 "currency_name": a.field("Currency unique ID", "text", "primary", "non-empty"),
                 "currency_title": a.field("Currency title", "text", "primary", "non-empty"),
@@ -595,7 +493,7 @@ class IAPBillingMethodAdmin(BillingMethodAdmin):
             "tier": a.field("Tier", "select", "primary", "non-empty", values=tiers)
         }
 
-    def update(self, tier):
+    def update(self, tier, **ignored):
         self.method.tier = tier
 
 
@@ -629,66 +527,6 @@ class NewCategoryController(a.AdminController):
             a.links("Navigate", [
                 a.link("categories", "Go back", icon="chevron-left"),
                 a.link("https://spacetelescope.github.io/understanding-json-schema/index.html", "See docs", icon="book")
-            ])
-        ]
-
-    def access_scopes(self):
-        return ["store_admin"]
-
-
-class NewContentController(a.AdminController):
-    @coroutine
-    @validate(clone="int_or_none")
-    def get(self, clone=None):
-
-        if clone:
-            contents = self.application.contents
-            try:
-                content = yield contents.get_content(self.gamespace, clone)
-            except ContentNotFound:
-                raise a.ActionError("No content to close from")
-            except ContentError as e:
-                raise a.ActionError("Failed to clone new content: " + e.args[0])
-
-            content_name = content.name
-            content_json = content.data
-        else:
-            content_name = ""
-            content_json = {}
-
-        raise Return({
-            "content_name": content_name,
-            "content_json": content_json
-        })
-
-    @coroutine
-    @validate(content_name="str_name", content_json="load_json_dict")
-    def create(self, content_name, content_json):
-        contents = self.application.contents
-
-        try:
-            content_id = yield contents.new_content(self.gamespace, content_name, content_json)
-        except ContentError as e:
-            raise a.ActionError("Failed to create new content: " + e.args[0])
-
-        raise a.Redirect(
-            "content",
-            message="New content has been created",
-            content_id=content_id)
-
-    def render(self, data):
-        return [
-            a.breadcrumbs([
-                a.link("contents", "Contents")
-            ], "New contents"),
-            a.form("New content", fields={
-                "content_name": a.field("Content unique ID", "text", "primary", "non-empty"),
-                "content_json": a.field("Content payload (any useful data)", "json", "primary", "non-empty")
-            }, methods={
-                "create": a.method("Clone" if self.context.get("clone") else "Create", "primary")
-            }, data=data),
-            a.links("Navigate", [
-                a.link("contents", "Go back", icon="chevron-left")
             ])
         ]
 
@@ -1036,7 +874,7 @@ class NewStoreController(a.AdminController):
                 "create": a.method("Create", "primary")
             }, data=data),
             a.links("Navigate", [
-                a.link("contents", "Go back", icon="chevron-left")
+                a.link("stores", "Go back", icon="chevron-left")
             ])
         ]
 
@@ -1046,8 +884,8 @@ class NewStoreController(a.AdminController):
 
 class NewStoreItemController(a.AdminController):
     @coroutine
-    @validate(item_name="str_name", item_data="load_json", item_contents="load_json_dict_of_ints")
-    def create(self, item_name, item_data, item_contents, **method_data):
+    @validate(item_name="str_name", item_data="load_json")
+    def create(self, item_name, item_data, **method_data):
         items = self.application.items
 
         billing_method = self.context.get("billing_method")
@@ -1064,7 +902,7 @@ class NewStoreItemController(a.AdminController):
 
         try:
             item_id = yield items.new_item(
-                self.gamespace, store_id, category_id, item_name, item_contents, item_data,
+                self.gamespace, store_id, category_id, item_name, item_data,
                 billing_method, billing_data)
         except StoreError as e:
             raise a.ActionError("Failed to create new item: " + e.args[0])
@@ -1080,7 +918,6 @@ class NewStoreItemController(a.AdminController):
 
         stores = self.application.stores
         categories = self.application.categories
-        contents = self.application.contents
         items = self.application.items
 
         if not BillingMethods.has_method(billing_method):
@@ -1096,12 +933,10 @@ class NewStoreItemController(a.AdminController):
 
             item_name = item.name
             item_data = item.data
-            item_contents = item.contents
             item_method_data = item.method_data
         else:
             item_name = ""
             item_data = {}
-            item_contents = {}
             item_method_data = {}
 
         try:
@@ -1113,8 +948,6 @@ class NewStoreItemController(a.AdminController):
             category = yield categories.get_category(self.gamespace, category_id)
         except CategoryNotFound:
             raise a.ActionError("No such category")
-
-        content_items = yield contents.list_contents(self.gamespace)
 
         try:
             scheme = yield categories.get_common_scheme(self.gamespace)
@@ -1131,11 +964,9 @@ class NewStoreItemController(a.AdminController):
             "category_name": category.name,
             "store_name": store.name,
             "scheme": scheme,
-            "content_items": content_items,
             "billing_fields": method_instance.render(),
             "item_name": item_name,
-            "item_data": item_data,
-            "item_contents": item_contents
+            "item_data": item_data
         }
 
         data.update(method_instance.get())
@@ -1145,15 +976,10 @@ class NewStoreItemController(a.AdminController):
     def render(self, data):
 
         fields = {
-            "item_name": a.field("Item unique name", "text", "primary", "non-empty"),
+            "item_name": a.field("Item unique name", "text", "primary", "non-empty", order=1),
             "item_data": a.field(
                 "Item properties", "dorn", "primary",
-                schema=data["scheme"]
-            ),
-            "item_contents": a.field(
-                "Item contents (entities, delivered to the user for the purchase)", "kv", "primary",
-                values={item.name: item.name for item in data["content_items"]}
-            )
+                schema=data["scheme"], order=2)
         }
 
         fields.update(data["billing_fields"])
@@ -1241,7 +1067,7 @@ class NewStoreTierController(a.AdminController):
 class OfflineBillingMethodAdmin(BillingMethodAdmin):
     def __init__(self, action, store_id):
         super(OfflineBillingMethodAdmin, self).__init__(action, store_id, OfflineBillingMethod)
-        self.items = []
+        self.currencies = []
 
     def get(self):
         return {
@@ -1251,17 +1077,17 @@ class OfflineBillingMethodAdmin(BillingMethodAdmin):
 
     @coroutine
     def init(self):
-        self.items = yield self.action.application.contents.list_contents(self.action.gamespace)
+        self.currencies = yield self.action.application.currencies.list_currencies(self.action.gamespace)
 
     def render(self):
         return {
             "currency": a.field("Currency", "select", "primary", "non-empty", values={
-                item.name: item.name for item in self.items
-            }),
-            "amount": a.field("Price (in currency)", "text", "primary", "number")
+                currency.name: currency.title for currency in self.currencies
+            }, order=20),
+            "amount": a.field("Price (in currency)", "text", "primary", "number", order=21)
         }
 
-    def update(self, currency, amount):
+    def update(self, currency, amount, **ignored):
         self.method.currency = currency
         self.method.amount = amount
 
@@ -1270,7 +1096,6 @@ class RootAdminController(a.AdminController):
     def render(self, data):
         return [
             a.links("Store service", [
-                a.link("contents", "Edit contents", icon="paper-plane"),
                 a.link("stores", "Edit stores", icon="shopping-bag"),
                 a.link("categories", "Edit categories", icon="list-alt"),
                 a.link("currencies", "Edit currencies", icon="bitcoin"),
@@ -1402,7 +1227,6 @@ class StoreItemController(a.AdminController):
         stores = self.application.stores
         items = self.application.items
         categories = self.application.categories
-        contents = self.application.contents
 
         try:
             item = yield items.get_item(self.gamespace, item_id)
@@ -1421,8 +1245,6 @@ class StoreItemController(a.AdminController):
             category = yield categories.get_category(self.gamespace, category_id)
         except CategoryNotFound:
             raise a.ActionError("No such category")
-
-        content_items = yield contents.list_contents(self.gamespace)
 
         try:
             scheme = yield categories.get_common_scheme(self.gamespace)
@@ -1445,8 +1267,6 @@ class StoreItemController(a.AdminController):
             "scheme": scheme,
             "item_name": item.name,
             "item_data": item.data,
-            "item_contents": item.contents,
-            "content_items": content_items,
             "billing_method": item_method,
             "store_id": store_id,
             "billing_fields": method_instance.render(),
@@ -1473,15 +1293,10 @@ class StoreItemController(a.AdminController):
                 a.link("store", data["store_name"], store_id=data.get("store_id"))
             ], data["item_name"]),
             a.form("Store item (of category '{0}')".format(data["category_name"]), fields={
-                "item_name": a.field("Item unique name", "text", "primary", "non-empty"),
+                "item_name": a.field("Item unique name", "text", "primary", "non-empty", order=1),
                 "item_data": a.field(
                     "Item properties", "dorn", "primary",
-                    schema=data["scheme"]
-                ),
-                "item_contents": a.field(
-                    "Item contents (entities, delivered to the user for the purchase)", "kv", "primary",
-                    values={item.name: item.name for item in data["content_items"]}
-                )
+                    schema=data["scheme"], order=2)
             }, methods={
                 "update": a.method("Update", "primary"),
                 "delete": a.method("Delete this item", "danger"),
@@ -1496,7 +1311,8 @@ class StoreItemController(a.AdminController):
                        store_id=data.get("store_id"),
                        clone=self.context.get("item_id"),
                        category_id=data.get("category_id"),
-                       billing_method=data.get("billing_method"))
+                       billing_method=data.get("billing_method")),
+                a.link("category", "Edit category", icon="list-alt", category_id=data.get("category_id"))
             ])
         ]
 
@@ -1505,14 +1321,14 @@ class StoreItemController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    @validate(item_name="str_name", item_data="load_json", item_contents="load_json_dict_of_ints")
-    def update(self, item_name, item_data, item_contents):
+    @validate(item_name="str_name", item_data="load_json")
+    def update(self, item_name, item_data):
         items = self.application.items
 
         item_id = self.context.get("item_id")
 
         try:
-            yield items.update_item(self.gamespace, item_id, item_name, item_contents, item_data)
+            yield items.update_item(self.gamespace, item_id, item_name, item_data)
         except ItemError as e:
             raise a.ActionError("Failed to update item: " + e.args[0])
 
@@ -1803,7 +1619,7 @@ class StoreSettingsController(a.AdminController):
 
         try:
             component = yield stores.get_store_component(self.gamespace, store_id, component_id)
-        except StoreComponentNotFound as e:
+        except StoreComponentNotFound:
             raise a.ActionError("No such store component")
 
         name = component.name
@@ -1959,8 +1775,7 @@ class StoreSettingsController(a.AdminController):
 class StoresController(a.AdminController):
     @coroutine
     def get(self):
-        contents = self.application.stores
-        stores = yield contents.list_stores(self.gamespace)
+        stores = yield self.application.stores.list_stores(self.gamespace)
 
         result = {
             "stores": stores

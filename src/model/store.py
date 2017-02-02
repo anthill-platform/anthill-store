@@ -278,8 +278,7 @@ class StoreModel(Model):
                 "id": item.name,
                 "category": item.category.name,
                 "payload": item.data,
-                "billing": billing,
-                "contents": item.contents
+                "billing": billing
             })
 
         data = {
@@ -317,7 +316,7 @@ class StoreModel(Model):
                 WHERE `store_id`=%s AND `gamespace_id`=%s;
             """, store_name, ujson.dumps(discount_scheme), store_id, gamespace_id)
         except DatabaseError as e:
-            raise StoreError("Failed to update content: " + e.args[1])
+            raise StoreError("Failed to update store: " + e.args[1])
 
     @coroutine
     @validate(gamespace_id="int", store_id="int", component_id="int", component_data="json_dict")

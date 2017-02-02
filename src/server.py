@@ -13,7 +13,6 @@ from common.social.steam import SteamAPI
 import admin
 import options as _opts
 
-from model.content import ContentModel
 from model.store import StoreModel
 from model.item import ItemModel
 from model.category import CategoryModel
@@ -41,7 +40,6 @@ class StoreServer(common.server.Server):
 
         self.steam_api = SteamAPI(self.cache)
 
-        self.contents = ContentModel(self.db)
         self.items = ItemModel(self.db)
         self.categories = CategoryModel(self.db)
         self.tiers = TierModel(self.db)
@@ -54,15 +52,11 @@ class StoreServer(common.server.Server):
 
     def get_models(self):
         return [self.currencies, self.categories, self.stores,
-                self.items, self.contents, self.tiers, self.orders,
-                self.discounts]
+                self.items, self.tiers, self.orders, self.discounts]
 
     def get_admin(self):
         return {
             "index": admin.RootAdminController,
-            "contents": admin.ContentsController,
-            "content": admin.ContentController,
-            "new_content": admin.NewContentController,
             "stores": admin.StoresController,
             "store": admin.StoreController,
             "store_settings": admin.StoreSettingsController,
