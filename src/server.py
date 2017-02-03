@@ -79,6 +79,9 @@ class StoreServer(common.server.Server):
             "orders": admin.OrdersController
         }
 
+    def get_internal_handler(self):
+        return handler.InternalHandler(self)
+
     def get_metadata(self):
         return {
             "title": "Store",

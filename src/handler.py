@@ -1,11 +1,11 @@
 
-
 from tornado.gen import coroutine, Return
 from tornado.web import HTTPError
 
 from common.access import scoped, AccessToken
 from common.handler import AuthenticatedHandler
-from common.validate import ValidationError
+from common.validate import ValidationError, validate
+from common.internal import InternalError
 from common import to_int
 
 from model.store import StoreNotFound
@@ -93,3 +93,26 @@ class OrderHandler(AuthenticatedHandler):
             raise HTTPError(400, e.message)
 
         self.dumps(result)
+
+
+class InternalHandler(object):
+    def __init__(self, application):
+        self.application = application
+
+    @coroutine
+    @validate(gamespace="int", name="str_name")
+    def get_store(self, gamespace, name):
+
+        try:
+            store_data = yield self.application.stores.find_store_data(
+                gamespace,
+                name)
+
+        except StoreNotFound:
+            raise InternalError(404, "Store not found")
+        except ValidationError as e:
+            raise InternalError(400, e.message)
+
+        raise Return({
+            "store": store_data
+        })
