@@ -1213,7 +1213,7 @@ class StoreItemController(a.AdminController):
         try:
             yield items.delete_item(self.gamespace, item_id)
         except ItemError as e:
-            raise a.ActionError("Failed to delete item: " + e.args[0])
+            raise a.ActionError("Failed to delete item: " + e.message)
 
         raise a.Redirect(
             "store",
