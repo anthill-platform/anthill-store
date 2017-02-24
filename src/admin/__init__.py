@@ -1951,9 +1951,9 @@ class OrdersController(a.AdminController):
         q.offset = (page - 1) * OrdersController.ORDERS_PER_PAGE
         q.limit = OrdersController.ORDERS_PER_PAGE
 
-        q.item = order_item
-        q.tier = order_tier
-        q.account = order_account
+        q.item_id = order_item
+        q.tier_id = order_tier
+        q.account_id = order_account
 
         if order_status != "any":
             q.status = order_status

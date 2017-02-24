@@ -83,10 +83,10 @@ class OrderQuery(object):
         self.store_id = store_id
         self.db = db
 
-        self.tier = None
-        self.item = None
+        self.tier_id = None
+        self.item_id = None
+        self.account_id = None
         self.component = None
-        self.account = None
         self.status = None
         self.currency = None
 
@@ -109,21 +109,21 @@ class OrderQuery(object):
             str(self.store_id)
         ]
 
-        if self.tier:
+        if self.tier_id:
             conditions.append("`orders`.`tier_id`=%s")
-            data.append(str(self.tier))
+            data.append(str(self.tier_id))
 
-        if self.item:
+        if self.item_id:
             conditions.append("`orders`.`item_id`=%s")
-            data.append(str(self.item))
+            data.append(str(self.item_id))
 
         if self.component:
             conditions.append("`orders`.`component_id`=%s")
             data.append(self.component)
 
-        if self.account:
+        if self.account_id:
             conditions.append("`orders`.`account_id`=%s")
-            data.append(str(self.account))
+            data.append(str(self.account_id))
 
         if self.currency:
             conditions.append("`orders`.`order_currency`=%s")
