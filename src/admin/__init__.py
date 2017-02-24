@@ -1954,8 +1954,12 @@ class OrdersController(a.AdminController):
         q.item = order_item
         q.tier = order_tier
         q.account = order_account
-        q.status = order_status
-        q.currency = order_currency
+
+        if order_status != "any":
+            q.status = order_status
+
+        if order_currency != "any":
+            q.currency = order_currency
 
         orders, count = yield q.query(count=True)
         pages = int(math.ceil(float(count) / float(OrdersController.ORDERS_PER_PAGE)))
@@ -1964,28 +1968,28 @@ class OrdersController(a.AdminController):
             item.item_id: item.name
             for item in store_items
         }
-        store_items[""] = "Any"
+        store_items["0"] = "Any"
 
         store_tiers = {
             tier.tier_id: tier.name
             for tier in store_tiers
         }
-        store_tiers[""] = "Any"
+        store_tiers["0"] = "Any"
 
         currencies_list = {
             currency.name: currency.title
             for currency in currencies_list
         }
-        currencies_list[""] = "Any"
+        currencies_list["any"] = "Any"
 
         raise Return({
             "orders": orders,
             "pages": pages,
-            "order_item": order_item,
-            "order_tier": order_tier,
-            "order_status": order_status,
-            "order_account": order_account,
-            "order_currency": order_currency,
+            "order_item": order_item or "0",
+            "order_tier": order_tier or "0",
+            "order_status": order_status or "any",
+            "order_account": order_account or "0",
+            "order_currency": order_currency or "any",
             "store_name": store.name,
             "store_items": store_items,
             "store_tiers": store_tiers,
