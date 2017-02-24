@@ -1900,7 +1900,7 @@ class OrdersController(a.AdminController):
         }
 
         filters.update({
-            k: v for k, v in args.iteritems() if v
+            k: v for k, v in args.iteritems() if v not in ["0", "any"]
         })
 
         raise a.Redirect("orders", store_id=store_id, **filters)
@@ -1995,7 +1995,7 @@ class OrdersController(a.AdminController):
             "store_tiers": store_tiers,
             "currencies_list": currencies_list,
             "order_statuses": {
-                "": "Any",
+                "any": "Any",
                 OrdersModel.STATUS_NEW: "New",
                 OrdersModel.STATUS_SUCCEEDED: "Succeeded",
                 OrdersModel.STATUS_ERROR: "Error",
