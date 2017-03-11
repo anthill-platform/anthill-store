@@ -15,6 +15,7 @@ class SteamStoreComponent(StoreComponent):
 
     API_URL = "https://api.steampowered.com/ISteamMicroTxn"
     SANDBOX_API_URL = "https://api.steampowered.com/ISteamMicroTxnSandbox"
+    PURCHASE_AMOUNT_LIMIT = 1000000
 
     def __init__(self):
         super(SteamStoreComponent, self).__init__()
@@ -99,6 +100,9 @@ class SteamStoreComponent(StoreComponent):
 
         if not steam_id:
             raise StoreComponentError(400, "No username environment variable")
+
+        if amount > SteamStoreComponent.PURCHASE_AMOUNT_LIMIT:
+            raise StoreComponentError(400, "Amount limit is reached")
 
         steam_api = app.steam_api
 
