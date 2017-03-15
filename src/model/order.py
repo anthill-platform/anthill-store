@@ -450,7 +450,8 @@ class OrdersModel(Model):
                 "currency": order.currency,
                 "store": order_info.store.name,
                 "total": order.total,
-                "order_id": to_int(order.order_id)
+                "order_id": to_int(order.order_id),
+                "payload": order_info.item.data
             })
 
     @coroutine
