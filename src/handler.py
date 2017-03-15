@@ -1,6 +1,6 @@
 
 from tornado.gen import coroutine, Return
-from tornado.web import HTTPError
+from tornado.web import HTTPError, RequestHandler
 
 from common.access import scoped, AccessToken
 from common.handler import AuthenticatedHandler
@@ -61,7 +61,7 @@ class NewOrderHandler(AuthenticatedHandler):
             raise HTTPError(400, "Corrupted env")
 
         try:
-            order_id = yield orders.new_order(
+            order_info = yield orders.new_order(
                 gamespace_id, account_id, store_name, component_name, item_name,
                 currency_name, amount, env)
         except OrderError as e:
@@ -69,9 +69,7 @@ class NewOrderHandler(AuthenticatedHandler):
         except ValidationError as e:
             raise HTTPError(400, e.message)
 
-        self.dumps({
-            "order_id": order_id
-        })
+        self.dumps(order_info)
 
 
 class OrderHandler(AuthenticatedHandler):
@@ -95,6 +93,65 @@ class OrderHandler(AuthenticatedHandler):
         self.dumps(result)
 
 
+class OrdersHandler(AuthenticatedHandler):
+    @scoped(["store_order"])
+    @coroutine
+    def post(self):
+        orders = self.application.orders
+
+        gamespace_id = self.token.get(AccessToken.GAMESPACE)
+        account_id = self.token.account
+
+        try:
+            result = yield orders.update_orders(gamespace_id, account_id)
+        except OrderError as e:
+            raise HTTPError(e.code, e.message)
+        except ValidationError as e:
+            raise HTTPError(400, e.message)
+
+        self.dumps(result)
+
+
+class WebHookHandler(AuthenticatedHandler):
+    @coroutine
+    def post(self, gamespace_id, store_name, component_name):
+        orders = self.application.orders
+
+        arguments = {
+            key: value[0]
+            for key, value in self.request.arguments.iteritems()
+        }
+
+        headers = {
+            key: value
+            for key, value in self.request.headers.iteritems()
+        }
+
+        body = self.request.body
+
+        try:
+            result = yield orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, body)
+        except NoOrderError:
+            raise HTTPError(404, "No such order")
+        except OrderError as e:
+            self.set_status(e.code)
+            if isinstance(e.message, dict):
+                self.dumps(e.message)
+                return
+
+            self.write(e.message)
+            return
+        except ValidationError as e:
+            raise HTTPError(400, e.message)
+
+        if result:
+            if isinstance(result, dict):
+                self.dumps(result)
+                return
+
+            self.write(result)
+
+
 class InternalHandler(object):
     def __init__(self, application):
         self.application = application
@@ -116,3 +173,60 @@ class InternalHandler(object):
         raise Return({
             "store": store_data
         })
+
+    @coroutine
+    @validate(gamespace="int", account="int", store="str_name", item="str_name", amount="int", component="str_name")
+    def new_order(self, gamespace, account, store, item, currency, amount, component):
+
+        try:
+            result = yield self.application.orders.new_order(
+                gamespace, account, store, component, item, currency, amount, {})
+
+        except OrderError as e:
+            raise InternalError(e.code, e.message)
+        except ValidationError as e:
+            raise InternalError(400, e.message)
+
+        raise Return(result)
+
+    @coroutine
+    @validate(gamespace="int", account="int", order_id="int")
+    def update_order(self, gamespace, account, order_id):
+
+        try:
+            result = yield self.application.orders.update_order(
+                gamespace, order_id, account)
+
+        except NoOrderError:
+            raise HTTPError(404, "No such order")
+        except OrderError as e:
+            raise InternalError(e.code, e.message)
+        except ValidationError as e:
+            raise InternalError(400, e.message)
+
+        raise Return(result)
+
+    @coroutine
+    @validate(gamespace="int", account="int")
+    def update_orders(self, gamespace, account):
+
+        try:
+            result = yield self.application.orders.update_orders(
+                gamespace, account)
+        except OrderError as e:
+            raise InternalError(e.code, e.message)
+        except ValidationError as e:
+            raise InternalError(400, e.message)
+
+        raise Return(result)
+
+
+class XsollaFrontHandler(RequestHandler):
+    def get(self):
+        access_token = self.get_argument("access_token")
+        sandbox = self.get_argument("sandbox", "false") == "true"
+
+        self.render(
+            "template/xsolla_form.html",
+            access_token=access_token,
+            sandbox="true" if sandbox else "false")

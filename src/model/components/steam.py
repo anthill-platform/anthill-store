@@ -3,6 +3,7 @@ from tornado.gen import coroutine, Return
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest, HTTPError
 
 from . import StoreComponent, StoreComponents, StoreComponentError
+from .. order import OrdersModel
 
 from common.social import steam
 
@@ -36,7 +37,7 @@ class SteamStoreComponent(StoreComponent):
         return SteamStoreComponent.SANDBOX_API_URL if self.sandbox else SteamStoreComponent.API_URL
 
     @coroutine
-    def update_order(self, app, gamespace_id, account_id, order):
+    def update_order(self, app, gamespace_id, account_id, order, order_info):
 
         order_id = order.order_id
         steam_api = app.steam_api
@@ -84,13 +85,15 @@ class SteamStoreComponent(StoreComponent):
         if not transaction_id:
             raise StoreComponentError(500, "No TransactionID")
 
-        raise Return({
+        result = (OrdersModel.STATUS_SUCCEEDED, {
             "transaction_id": transaction_id
         })
 
+        raise Return(result)
+
     # noinspection SpellCheckingInspection
     @coroutine
-    def new_order(self, app, gamespace_id, order_id, currency, price, amount, total, store, item, env):
+    def new_order(self, app, gamespace_id, account_id, order_id, currency, price, amount, total, store, item, env):
 
         steam_id = env.get("steam_id")
 

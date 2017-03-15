@@ -93,7 +93,9 @@ class StoreServer(common.server.Server):
         return [
             (r"/store/(.*)", handler.StoreHandler),
             (r"/order/new", handler.NewOrderHandler),
+            (r"/orders", handler.OrdersHandler),
             (r"/order/(.*)", handler.OrderHandler),
+            (r"/hook/([0-9]+)/(.*)/(.*)", handler.WebHookHandler),
         ]
 
 if __name__ == "__main__":

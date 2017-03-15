@@ -2,6 +2,10 @@
 from tornado.gen import coroutine
 
 
+class NoSuchStoreComponentError(Exception):
+    pass
+
+
 class StoreComponentError(Exception):
     def __init__(self, code, message):
         self.code = code
@@ -24,7 +28,7 @@ class StoreComponent(object):
         self.bundle = data.get("bundle", "")
 
     @coroutine
-    def new_order(self, app, gamespace_id, order_id, currency, price, amount, total, store, item, env):
+    def new_order(self, app, gamespace_id, account_id, order_id, currency, price, amount, total, store, item, env):
         raise NotImplementedError()
 
 
@@ -46,7 +50,13 @@ class StoreComponents(object):
 
     @staticmethod
     def component(component_name, data):
-        instance = StoreComponents.COMPONENTS[component_name]()
+
+        try:
+            cmp_class = StoreComponents.COMPONENTS[component_name]
+        except KeyError:
+            raise NoSuchStoreComponentError()
+
+        instance = cmp_class()
         instance.load(data)
         return instance
 

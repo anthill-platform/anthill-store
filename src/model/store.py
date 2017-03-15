@@ -20,6 +20,7 @@ class StoreAdapter(object):
 
 class StoreComponentAdapter(object):
     def __init__(self, data):
+        self.store_id = data.get("store_id", None)
         self.component_id = data["component_id"]
         self.name = data["component"]
         self.data = data["component_data"]
@@ -105,6 +106,24 @@ class StoreModel(Model):
                 FROM `store_components`
                 WHERE `store_id`=%s AND `gamespace_id`=%s AND `component`=%s;
             """, store_id, gamespace_id, component_name)
+        except DatabaseError as e:
+            raise StoreError("Failed to find store component: " + e.args[1])
+
+        if result is None:
+            raise StoreComponentNotFound()
+
+        raise Return(StoreComponentAdapter(result))
+
+    @coroutine
+    @validate(gamespace_id="int", store_name="str_name", component_name="str_name")
+    def find_store_name_component(self, gamespace_id, store_name, component_name):
+        try:
+            result = yield self.db.get("""
+                SELECT cmp.*, st.`store_id`
+                FROM `store_components` AS cmp, `stores` AS st
+                WHERE st.`store_name`=%s AND cmp.`gamespace_id`=%s AND cmp.`component`=%s
+                  AND st.`store_id` = cmp.`store_id`;
+            """, store_name, gamespace_id, component_name)
         except DatabaseError as e:
             raise StoreError("Failed to find store component: " + e.args[1])
 
