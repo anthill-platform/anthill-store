@@ -2026,3 +2026,4 @@ class BillingMethods(object):
 def init():
     import appstore
     import steam
+    import xsolla

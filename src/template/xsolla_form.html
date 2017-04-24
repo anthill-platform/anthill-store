@@ -1,0 +1,19 @@
+ <script>
+     var options = {
+        access_token: '{{ access_token }}',
+        sandbox: '{{ sandbox }}' == 'true',
+        lightbox: {
+             modal: true
+        }
+     };
+     var s = document.createElement('script');
+     s.type = "text/javascript";
+     s.async = true;
+     s.src = "https://static.xsolla.com/embed/paystation/1.0.5/widget.min.js";
+     s.addEventListener('load', function (e) {
+         XPayStationWidget.init(options);
+         XPayStationWidget.open();
+     }, false);
+     var head = document.getElementsByTagName('head')[0];
+     head.appendChild(s);
+ </script>

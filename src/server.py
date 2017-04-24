@@ -9,6 +9,7 @@ import common.sign
 import common.keyvalue
 
 from common.social.steam import SteamAPI
+from common.social.xsolla import XsollaAPI
 
 import admin
 import options as _opts
@@ -39,6 +40,7 @@ class StoreServer(common.server.Server):
             max_connections=options.cache_max_connections)
 
         self.steam_api = SteamAPI(self.cache)
+        self.xsolla_api = XsollaAPI(self.cache)
 
         self.items = ItemModel(self.db)
         self.categories = CategoryModel(self.db)
@@ -96,6 +98,7 @@ class StoreServer(common.server.Server):
             (r"/orders", handler.OrdersHandler),
             (r"/order/(.*)", handler.OrderHandler),
             (r"/hook/([0-9]+)/(.*)/(.*)", handler.WebHookHandler),
+            (r"/front/xsolla", handler.XsollaFrontHandler),
         ]
 
 if __name__ == "__main__":
