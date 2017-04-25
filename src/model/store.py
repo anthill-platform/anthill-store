@@ -5,8 +5,6 @@ from common.database import DatabaseError
 from common.model import Model
 from common.validate import validate
 
-from discount import DiscountsModel
-
 import ujson
 
 
@@ -15,7 +13,6 @@ class StoreAdapter(object):
         self.store_id = data["store_id"]
         self.name = data["store_name"]
         self.data = data.get("json")
-        self.discount_scheme = data.get("discount_scheme")
 
 
 class StoreComponentAdapter(object):
@@ -240,9 +237,9 @@ class StoreModel(Model):
         try:
             store_id = yield self.db.insert("""
                 INSERT INTO `stores`
-                (`gamespace_id`, `store_name`, `json`, `discount_scheme`)
-                VALUES (%s, %s, %s, %s);
-            """, gamespace_id, store_name, "{}", ujson.dumps(DiscountsModel.DEFAULT_SCHEME))
+                (`gamespace_id`, `store_name`, `json`)
+                VALUES (%s, %s, %s);
+            """, gamespace_id, store_name, "{}")
         except DatabaseError as e:
             raise StoreError("Failed to add new store: " + e.args[1])
 
@@ -296,7 +293,7 @@ class StoreModel(Model):
             items.append({
                 "id": item.name,
                 "category": item.category.name,
-                "payload": item.data,
+                "public": item.public_data,
                 "billing": billing
             })
 
@@ -326,14 +323,14 @@ class StoreModel(Model):
         """, ujson.dumps(data), store_id, gamespace_id)
 
     @coroutine
-    @validate(gamespace_id="int", store_id="int", store_name="str", discount_scheme="json_dict")
-    def update_store(self, gamespace_id, store_id, store_name, discount_scheme):
+    @validate(gamespace_id="int", store_id="int", store_name="str")
+    def update_store(self, gamespace_id, store_id, store_name):
         try:
             yield self.db.execute("""
                 UPDATE `stores`
-                SET `store_name`=%s, `discount_scheme`=%s
+                SET `store_name`=%s
                 WHERE `store_id`=%s AND `gamespace_id`=%s;
-            """, store_name, ujson.dumps(discount_scheme), store_id, gamespace_id)
+            """, store_name, store_id, gamespace_id)
         except DatabaseError as e:
             raise StoreError("Failed to update store: " + e.args[1])
 

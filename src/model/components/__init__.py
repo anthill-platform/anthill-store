@@ -7,9 +7,10 @@ class NoSuchStoreComponentError(Exception):
 
 
 class StoreComponentError(Exception):
-    def __init__(self, code, message):
+    def __init__(self, code, message, update_status=None):
         self.code = code
         self.message = message
+        self.update_status = update_status
 
     def __str__(self):
         return self.message

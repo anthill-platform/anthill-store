@@ -8,7 +8,7 @@ import common.admin as a
 import common
 
 from model.store import StoreError, StoreNotFound, StoreComponentNotFound
-from model.category import CategoryError, CategoryNotFound
+from model.category import CategoryError, CategoryNotFound, CategoryModel
 from model.item import ItemError, ItemNotFound
 from model.billing import OfflineBillingMethod, IAPBillingMethod
 from model.tier import TierModel, TierError, TierNotFound, CurrencyError, CurrencyNotFound
@@ -163,7 +163,7 @@ class CategoriesController(a.AdminController):
     def render(self, data):
         return [
             a.breadcrumbs([], "Categories"),
-            a.links("Items", [
+            a.links("Categories", [
                 a.link("category", item.name, icon="list-alt", category_id=item.category_id)
                 for item in data["items"]
                 ]),
@@ -186,11 +186,15 @@ class CategoryCommonController(a.AdminController):
 
         try:
             common_scheme = yield categories.get_common_scheme(self.gamespace)
+            public_item_scheme = common_scheme.public_item_scheme or CategoryModel.DEFAULT_PUBLIC_SCHEME
+            private_item_scheme = common_scheme.private_item_scheme or CategoryModel.DEFAULT_PRIVATE_SCHEME
         except CategoryNotFound:
-            common_scheme = {}
+            public_item_scheme = CategoryModel.DEFAULT_PUBLIC_SCHEME
+            private_item_scheme = CategoryModel.DEFAULT_PRIVATE_SCHEME
 
         result = {
-            "scheme": common_scheme
+            "public_item_scheme": public_item_scheme,
+            "private_item_scheme": private_item_scheme
         }
 
         raise a.Return(result)
@@ -201,7 +205,8 @@ class CategoryCommonController(a.AdminController):
                 a.link("categories", "Categories")
             ], "Common scheme"),
             a.form("Common scheme shared across categories", fields={
-                "scheme": a.field("Scheme", "json", "primary", "non-empty")
+                "public_item_scheme": a.field("Public Item Scheme", "json", "primary", "non-empty", order=1),
+                "private_item_scheme": a.field("Private Item Scheme", "json", "primary", "non-empty", order=2),
             }, methods={
                 "update": a.method("Update", "primary")
             }, data=data),
@@ -215,13 +220,13 @@ class CategoryCommonController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    @validate(scheme="load_json_dict")
-    def update(self, scheme):
+    @validate(public_item_scheme="load_json_dict", private_item_scheme="load_json_dict")
+    def update(self, public_item_scheme, private_item_scheme):
 
         categories = self.application.categories
 
         try:
-            yield categories.update_common_scheme(self.gamespace, scheme)
+            yield categories.update_common_scheme(self.gamespace, public_item_scheme, private_item_scheme)
         except CategoryError as e:
             raise a.ActionError("Failed to update common scheme: " + e.args[0])
 
@@ -257,7 +262,8 @@ class CategoryController(a.AdminController):
 
         result = {
             "category_name": category.name,
-            "category_scheme": category.scheme
+            "category_public_item_scheme": category.public_item_scheme,
+            "category_private_item_scheme": category.private_item_scheme
         }
 
         raise a.Return(result)
@@ -268,8 +274,11 @@ class CategoryController(a.AdminController):
                 a.link("categories", "Categories")
             ], "Category"),
             a.form("Update category", fields={
-                "category_name": a.field("Category unique ID", "text", "primary", "non-empty"),
-                "category_scheme": a.field("Category scheme", "json", "primary", "non-empty")
+                "category_name": a.field("Category unique ID", "text", "primary", "non-empty", order=1),
+                "category_public_item_scheme": a.field("Public part of the item, available to everyone",
+                                                       "json", "primary", "non-empty", order=2),
+                "category_private_item_scheme": a.field("Private part of the item, available only after the purchase",
+                                                        "json", "primary", "non-empty", order=3),
             }, methods={
                 "update": a.method("Update", "primary"),
                 "delete": a.method("Delete this category", "danger")
@@ -285,14 +294,16 @@ class CategoryController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    @validate(category_name="str_name", category_scheme="load_json_dict")
-    def update(self, category_name, category_scheme):
+    @validate(category_name="str_name", category_public_item_scheme="load_json_dict",
+              category_private_item_scheme="load_json_dict")
+    def update(self, category_name, category_public_item_scheme, category_private_item_scheme):
 
         category_id = self.context.get("category_id")
         categories = self.application.categories
 
         try:
-            yield categories.update_category(self.gamespace, category_id, category_name, category_scheme)
+            yield categories.update_category(self.gamespace, category_id, category_name,
+                                             category_public_item_scheme, category_private_item_scheme)
         except CategoryError as e:
             raise a.ActionError("Failed to update category: " + e.args[0])
 
@@ -499,12 +510,16 @@ class IAPBillingMethodAdmin(BillingMethodAdmin):
 
 class NewCategoryController(a.AdminController):
     @coroutine
-    @validate(category_name="str_name", category_scheme="load_json_dict")
-    def create(self, category_name, category_scheme):
+    @validate(category_name="str_name",
+              category_public_item_scheme="load_json_dict",
+              category_private_item_scheme="load_json_dict")
+    def create(self, category_name, category_public_item_scheme, category_private_item_scheme):
         categories = self.application.categories
 
         try:
-            category_id = yield categories.new_category(self.gamespace, category_name, category_scheme)
+            category_id = yield categories.new_category(self.gamespace, category_name,
+                                                        category_public_item_scheme,
+                                                        category_private_item_scheme)
         except CategoryError as e:
             raise a.ActionError("Failed to create new category: " + e.args[0])
 
@@ -519,8 +534,11 @@ class NewCategoryController(a.AdminController):
                 a.link("categories", "Categories")
             ], "New category"),
             a.form("New category", fields={
-                "category_name": a.field("Category unique ID", "text", "primary", "non-empty"),
-                "category_scheme": a.field("Category scheme", "json", "primary", "non-empty")
+                "category_name": a.field("Category unique ID", "text", "primary", "non-empty", order=1),
+                "category_public_item_scheme": a.field("Public part of the item, available to everyone",
+                                                       "json", "primary", "non-empty", order=2),
+                "category_private_item_scheme": a.field("Private part of the item, available only after the purchase",
+                                                        "json", "primary", "non-empty", order=3)
             }, methods={
                 "create": a.method("Create", "primary")
             }, data=data),
@@ -529,6 +547,24 @@ class NewCategoryController(a.AdminController):
                 a.link("https://spacetelescope.github.io/understanding-json-schema/index.html", "See docs", icon="book")
             ])
         ]
+
+    @coroutine
+    def get(self):
+
+        categories = self.application.categories
+
+        try:
+            common_scheme = yield categories.get_common_scheme(self.gamespace)
+            public_item_scheme = common_scheme.public_item_scheme or CategoryModel.DEFAULT_PUBLIC_SCHEME
+            private_item_scheme = common_scheme.private_item_scheme or CategoryModel.DEFAULT_PRIVATE_SCHEME
+        except CategoryNotFound:
+            public_item_scheme = CategoryModel.DEFAULT_PUBLIC_SCHEME
+            private_item_scheme = CategoryModel.DEFAULT_PRIVATE_SCHEME
+
+        raise Return({
+            "category_public_item_scheme": public_item_scheme,
+            "category_private_item_scheme": private_item_scheme
+        })
 
     def access_scopes(self):
         return ["store_admin"]
@@ -884,8 +920,8 @@ class NewStoreController(a.AdminController):
 
 class NewStoreItemController(a.AdminController):
     @coroutine
-    @validate(item_name="str_name", item_data="load_json")
-    def create(self, item_name, item_data, **method_data):
+    @validate(item_name="str_name", item_public_data="load_json", item_private_data="load_json")
+    def create(self, item_name, item_public_data, item_private_data, **method_data):
         items = self.application.items
 
         billing_method = self.context.get("billing_method")
@@ -902,7 +938,8 @@ class NewStoreItemController(a.AdminController):
 
         try:
             item_id = yield items.new_item(
-                self.gamespace, store_id, category_id, item_name, item_data,
+                self.gamespace, store_id, category_id, item_name,
+                item_public_data, item_private_data,
                 billing_method, billing_data)
         except StoreError as e:
             raise a.ActionError("Failed to create new item: " + e.args[0])
@@ -950,12 +987,19 @@ class NewStoreItemController(a.AdminController):
             raise a.ActionError("No such category")
 
         try:
-            scheme = yield categories.get_common_scheme(self.gamespace)
+            common_scheme = yield categories.get_common_scheme(self.gamespace)
         except CategoryNotFound:
-            scheme = {}
+            common_public_item_scheme = {}
+            common_private_item_scheme = {}
+        else:
+            common_public_item_scheme = common_scheme.public_item_scheme
+            common_private_item_scheme = common_scheme.private_item_scheme
 
-        category_schema = category.scheme
-        common.update(scheme, category_schema)
+        public_item_scheme = category.public_item_scheme
+        private_item_scheme = category.private_item_scheme
+
+        common.update(public_item_scheme, common_public_item_scheme)
+        common.update(private_item_scheme, common_private_item_scheme)
 
         method_instance = yield StoreItemController.get_method(billing_method, self, store_id)
         method_instance.load(item_method_data)
@@ -963,7 +1007,8 @@ class NewStoreItemController(a.AdminController):
         data = {
             "category_name": category.name,
             "store_name": store.name,
-            "scheme": scheme,
+            "public_item_scheme": public_item_scheme,
+            "private_item_scheme": private_item_scheme,
             "billing_fields": method_instance.render(),
             "item_name": item_name,
             "item_data": item_data
@@ -977,9 +1022,12 @@ class NewStoreItemController(a.AdminController):
 
         fields = {
             "item_name": a.field("Item unique name", "text", "primary", "non-empty", order=1),
-            "item_data": a.field(
-                "Item properties", "dorn", "primary",
-                schema=data["scheme"], order=2)
+            "item_public_data": a.field(
+                "Public item properties (available to everyone)", "dorn", "primary",
+                schema=data["public_item_scheme"], order=2),
+            "item_private_data": a.field(
+                "Private item properties (available only as a response to successful purchase)", "dorn", "primary",
+                schema=data["private_item_scheme"], order=3),
         }
 
         fields.update(data["billing_fields"])
@@ -993,7 +1041,8 @@ class NewStoreItemController(a.AdminController):
                 "create": a.method("Clone" if self.context.get("clone") else "Create", "primary")
             }, data=data),
             a.links("Navigate", [
-                a.link("contents", "Go back", icon="chevron-left")
+                a.link("store", "Go back", icon="chevron-left", store_id=self.context.get("store_id")),
+                a.link("category", "Edit category scheme", icon="list-alt", category_id=self.context.get("category_id"))
             ])
         ]
 
@@ -1185,7 +1234,7 @@ class StoreController(a.AdminController):
             }, data=data),
             a.links("Navigate", [
                 a.link("stores", "Go back", icon="chevron-left"),
-                a.link("tiers", "Edit tiers", icon="apple", store_id=self.context.get("store_id")),
+                a.link("tiers", "Edit tiers", icon="diamond", store_id=self.context.get("store_id")),
                 a.link("orders", "Orders", icon="money", store_id=self.context.get("store_id")),
                 a.link("store_settings", "Store settings", icon="cog", store_id=self.context.get("store_id")),
                 a.link("choose_category", "Add new item", icon="plus", store_id=self.context.get("store_id")),
@@ -1247,12 +1296,19 @@ class StoreItemController(a.AdminController):
             raise a.ActionError("No such category")
 
         try:
-            scheme = yield categories.get_common_scheme(self.gamespace)
+            common_scheme = yield categories.get_common_scheme(self.gamespace)
         except CategoryNotFound:
-            scheme = {}
+            common_public_item_scheme = {}
+            common_private_item_scheme = {}
+        else:
+            common_public_item_scheme = common_scheme.public_item_scheme
+            common_private_item_scheme = common_scheme.private_item_scheme
 
-        category_schema = category.scheme
-        common.update(scheme, category_schema)
+        public_item_scheme = category.public_item_scheme
+        private_item_scheme = category.private_item_scheme
+
+        common.update(public_item_scheme, common_public_item_scheme)
+        common.update(private_item_scheme, common_private_item_scheme)
 
         item_method = item.method
 
@@ -1264,9 +1320,11 @@ class StoreItemController(a.AdminController):
             "category_name": category.name,
             "category_id": category_id,
             "store_name": store.name,
-            "scheme": scheme,
+            "public_item_scheme": public_item_scheme,
+            "private_item_scheme": private_item_scheme,
             "item_name": item.name,
-            "item_data": item.data,
+            "item_public_data": item.public_data,
+            "item_private_data": item.private_data,
             "billing_method": item_method,
             "store_id": store_id,
             "billing_fields": method_instance.render(),
@@ -1294,9 +1352,12 @@ class StoreItemController(a.AdminController):
             ], data["item_name"]),
             a.form("Store item (of category '{0}')".format(data["category_name"]), fields={
                 "item_name": a.field("Item unique name", "text", "primary", "non-empty", order=1),
-                "item_data": a.field(
-                    "Item properties", "dorn", "primary",
-                    schema=data["scheme"], order=2)
+                "item_public_data": a.field(
+                    "Public item properties (available to everyone)", "dorn", "primary",
+                    schema=data["public_item_scheme"], order=2),
+                "item_private_data": a.field(
+                    "Private item properties (available only as a response to successful purchase)", "dorn", "primary",
+                    schema=data["private_item_scheme"], order=3)
             }, methods={
                 "update": a.method("Update", "primary"),
                 "delete": a.method("Delete this item", "danger"),
@@ -1312,7 +1373,7 @@ class StoreItemController(a.AdminController):
                        clone=self.context.get("item_id"),
                        category_id=data.get("category_id"),
                        billing_method=data.get("billing_method")),
-                a.link("category", "Edit category", icon="list-alt", category_id=data.get("category_id"))
+                a.link("category", "Edit category scheme", icon="list-alt", category_id=data.get("category_id"))
             ])
         ]
 
@@ -1321,14 +1382,14 @@ class StoreItemController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    @validate(item_name="str_name", item_data="load_json")
-    def update(self, item_name, item_data, **ignored):
+    @validate(item_name="str_name", item_public_data="load_json", item_private_data="load_json")
+    def update(self, item_name, item_public_data, item_private_data, **ignored):
         items = self.application.items
 
         item_id = self.context.get("item_id")
 
         try:
-            yield items.update_item(self.gamespace, item_id, item_name, item_data)
+            yield items.update_item(self.gamespace, item_id, item_name, item_public_data, item_private_data)
         except ItemError as e:
             raise a.ActionError("Failed to update item: " + e.args[0])
 
@@ -1593,7 +1654,7 @@ class StoreTiersController(a.AdminController):
                     "id": "actions",
                     "title": "Actions"
                 }
-            ], [{"name": [a.link("tier", str(tier.name), icon="apple", tier_id=tier.tier_id)],
+            ], [{"name": [a.link("tier", str(tier.name), icon="diamond", tier_id=tier.tier_id)],
                  "product": tier.product,
                  "actions": [a.button("tier", "Delete", "danger", _method="delete", tier_id=tier.tier_id)]
                  } for tier in data["tiers"]
@@ -1699,8 +1760,7 @@ class StoreSettingsController(a.AdminController):
 
         raise a.Return({
             "store_name": store.name,
-            "store_components": components,
-            "discount_scheme": store.discount_scheme
+            "store_components": components
         })
 
     @coroutine
@@ -1732,8 +1792,7 @@ class StoreSettingsController(a.AdminController):
 
         result.extend([
             a.form("Store info", fields={
-                "store_name": a.field("Store unique ID", "text", "primary", "non-empty", order=1),
-                "discount_scheme": a.field("Discounts scheme", "json", "primary", "non-empty", order=2)
+                "store_name": a.field("Store unique ID", "text", "primary", "non-empty", order=1)
             }, methods={
                 "update": a.method("Update", "primary")
             }, data=data),
@@ -1755,14 +1814,14 @@ class StoreSettingsController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    @validate(store_name="str_name", discount_scheme="load_json_dict")
-    def update(self, store_name, discount_scheme):
+    @validate(store_name="str_name")
+    def update(self, store_name):
 
         store_id = self.context.get("store_id")
         stores = self.application.stores
 
         try:
-            yield stores.update_store(self.gamespace, store_id, store_name, discount_scheme)
+            yield stores.update_store(self.gamespace, store_id, store_name)
         except StoreError as e:
             raise a.ActionError("Failed to update store: " + e.args[0])
 
@@ -1808,7 +1867,7 @@ class OrdersController(a.AdminController):
         orders = [
             {
                 "tier": [
-                    a.link("tier", order.tier.name, icon="apple", tier_id=order.tier.tier_id)
+                    a.link("tier", order.tier.name, icon="diamond", tier_id=order.tier.tier_id)
                 ],
                 "item": [
                     a.link("item", order.item.name, icon="shopping-bag", item_id=order.item.item_id)

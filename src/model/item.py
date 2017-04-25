@@ -14,13 +14,14 @@ class ItemAdapter(object):
         self.item_id = record["item_id"]
         self.name = record["item_name"]
         self.store_id = record["store_id"]
-        self.data = record.get("item_json")
+        self.public_data = record.get("item_public_data")
+        self.private_data = record.get("item_private_data")
         self.category = record["item_category"]
         self.method = record["item_method"]
         self.method_data = record["item_method_data"]
 
     def description(self, language):
-        descriptions = self.data.get("description", {})
+        descriptions = self.public_data.get("description", {})
 
         if isinstance(descriptions, (str, unicode)):
             return descriptions
@@ -30,7 +31,7 @@ class ItemAdapter(object):
         return "Unknown"
 
     def title(self, language):
-        titles = self.data.get("title", {})
+        titles = self.public_data.get("title", {})
 
         if isinstance(titles, (str, unicode)):
             return titles
@@ -68,6 +69,12 @@ class ItemModel(Model):
     @validate(gamespace_id="int", item_id="int")
     def delete_item(self, gamespace_id, item_id):
         try:
+            yield self.db.execute("""
+                DELETE
+                FROM `orders`
+                WHERE `item_id`=%s AND `gamespace_id`=%s;
+            """, item_id, gamespace_id)
+
             yield self.db.execute("""
                 DELETE
                 FROM `items`
@@ -126,9 +133,10 @@ class ItemModel(Model):
 
     @coroutine
     @validate(gamespace_id="int", store_id="int", category_id="int", item_name="str",
-              item_data="json", item_method="str_name", method_data="json")
-    def new_item(self, gamespace_id, store_id, category_id, item_name,
-                 item_data, item_method, method_data):
+              item_public_data="json", item_private_data="json",
+              item_method="str_name", method_data="json")
+    def new_item(self, gamespace_id, store_id, category_id, item_name, item_public_data,
+                 item_private_data, item_method, method_data):
 
         try:
             yield self.find_item(gamespace_id, store_id, item_name)
@@ -142,25 +150,26 @@ class ItemModel(Model):
                 """
                     INSERT INTO `items`
                     (`gamespace_id`, `store_id`, `item_category`, `item_name`,
-                        `item_json`, `item_method`, `item_method_data`)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s);
+                        `item_public_data`, `item_private_data`, `item_method`, `item_method_data`)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
                 """, gamespace_id, store_id, category_id, item_name,
-                ujson.dumps(item_data), item_method, ujson.dumps(method_data))
+                ujson.dumps(item_public_data), ujson.dumps(item_private_data),
+                item_method, ujson.dumps(method_data))
         except DatabaseError as e:
             raise ItemError("Failed to add new item: " + e.args[1])
 
         raise Return(item_id)
 
     @coroutine
-    @validate(gamespace_id="int", item_id="int", item_name="str", item_data="json")
-    def update_item(self, gamespace_id, item_id, item_name, item_data):
+    @validate(gamespace_id="int", item_id="int", item_name="str", item_public_data="json", item_private_data="json")
+    def update_item(self, gamespace_id, item_id, item_name, item_public_data, item_private_data):
 
         try:
             yield self.db.execute("""
                 UPDATE `items`
-                SET `item_name`=%s, `item_json`=%s
+                SET `item_name`=%s, `item_public_data`=%s, `item_private_data`=%s
                 WHERE `item_id`=%s AND `gamespace_id`=%s;
-            """, item_name, ujson.dumps(item_data), item_id, gamespace_id)
+            """, item_name, ujson.dumps(item_public_data), ujson.dumps(item_private_data), item_id, gamespace_id)
         except DatabaseError as e:
             raise ItemError("Failed to update item: " + e.args[1])
 

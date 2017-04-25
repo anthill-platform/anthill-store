@@ -430,6 +430,11 @@ class OrdersModel(Model):
                 "order": order.order_id,
                 "account": account_id
             })
+
+            if e.update_status:
+                new_status, new_info = e.update_status
+                yield update_status(new_status, new_info)
+
             raise OrderError(e.code, e.message)
         else:
             logging.info("Order succeeded!", extra={
@@ -451,7 +456,8 @@ class OrdersModel(Model):
                 "store": order_info.store.name,
                 "total": order.total,
                 "order_id": to_int(order.order_id),
-                "payload": order_info.item.data
+                "public": order_info.item.public_data,
+                "private": order_info.item.private_data
             })
 
     @coroutine
@@ -520,7 +526,7 @@ class OrdersModel(Model):
                 @coroutine
                 def update_status(new_status, new_info):
 
-                    info = order.info
+                    info = order.info or {}
                     info.update(new_info)
 
                     yield db.execute(
