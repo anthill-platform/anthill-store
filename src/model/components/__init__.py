@@ -25,6 +25,9 @@ class StoreComponent(object):
             "bundle": self.bundle
         }
 
+    def is_hook_applicable(self):
+        return False
+
     def load(self, data):
         self.bundle = data.get("bundle", "")
 

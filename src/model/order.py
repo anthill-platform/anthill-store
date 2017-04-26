@@ -392,7 +392,7 @@ class OrdersModel(Model):
                     price, amount, total, data.store, data.item, env)
 
             except StoreComponentError as e:
-                logging.exception("Failed to process new order")
+                logging.exception("Failed to process new order: " + e.message)
                 yield self.update_order_status(gamespace_id, order_id, OrdersModel.STATUS_ERROR, db=db)
                 raise OrderError(e.code, e.message)
 
@@ -486,6 +486,9 @@ class OrdersModel(Model):
             component_instance = StoreComponents.component(component_name, component.data)
         except NoSuchStoreComponentError:
             raise OrderError(404, "No such store component implementation")
+
+        if not component_instance.is_hook_applicable():
+            raise OrderError(400, "This store component does not allow hooks")
 
         try:
             result = yield component_instance.order_callback(self.app, gamespace_id, component.store_id,

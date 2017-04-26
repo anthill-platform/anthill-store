@@ -103,6 +103,9 @@ class StoreComponentAdmin(object):
             "bundle": self.component.bundle
         }
 
+    def get_hook_url(self, app, gamespace_id, store_name, component_name):
+        return app.get_host() + "/hook/" + gamespace_id + "/" + store_name + "/" + component_name
+
     @coroutine
     def init(self):
         pass
@@ -1785,10 +1788,23 @@ class StoreSettingsController(a.AdminController):
         ]
 
         for component_id, component in data["store_components"].iteritems():
-            result.append(a.form(component.name, fields=component.render(), methods={
+            component_fields = component.render()
+            component_data = component.get()
+
+            if component.component.is_hook_applicable():
+                component_fields.update({
+                    "hook_url": a.field("Backend hook URL", "readonly", "danger", "non-empty")
+                })
+
+                component_data.update({
+                    "hook_url": component.get_hook_url(
+                        self.application, self.gamespace, data["store_name"], component.name)
+                })
+
+            result.append(a.form(component.name, fields=component_fields, methods={
                 "change_component": a.method("Update component", "primary"),
                 "delete_component": a.method("Delete component", "danger")
-            }, data=component.get(), icon=component.icon(), component_id=component_id))
+            }, data=component_data, icon=component.icon(), component_id=component_id))
 
         result.extend([
             a.form("Store info", fields={

@@ -50,6 +50,9 @@ class XsollaStoreComponent(StoreComponent):
     def __url__(self):
         return XsollaStoreComponent.API_URL
 
+    def is_hook_applicable(self):
+        return True
+
     @coroutine
     def update_order(self, app, gamespace_id, account_id, order, order_info):
 
@@ -193,7 +196,7 @@ class XsollaStoreComponent(StoreComponent):
         try:
             response = yield xsolla_api.api_post("token", merchant_id, api_key, **arguments)
         except APIError as e:
-            raise StoreComponentError(e.code, e.message)
+            raise StoreComponentError(e.code, e.body)
 
         token = response.get("token", None)
 
@@ -227,6 +230,16 @@ class XsollaStoreComponent(StoreComponent):
                 }
             })
 
+        dry_run = transaction.get("dry_run", 0) == 1
+
+        if dry_run and not self.sandbox:
+            raise StoreComponentError(400, {
+                "error": {
+                    "code": "SECURITY_ERROR",
+                    "message": "Sandbox modes mismatch"
+                }
+            })
+
         try:
             order_id = transaction["external_id"]
         except KeyError:
@@ -239,16 +252,29 @@ class XsollaStoreComponent(StoreComponent):
 
         orders = app.orders
 
-        try:
-            result = yield orders.update_order_status_reliable(
-                gamespace_id, order_id, OrdersModel.STATUS_CREATED, OrdersModel.STATUS_APPROVED)
-        except OrderError as e:
-            raise StoreComponentError(e.code, {
-                "error": {
-                    "code": "FAILED_TO_APPROVE",
-                    "message": e.message
-                }
-            })
+        if dry_run:
+            try:
+                yield orders.update_order_status(gamespace_id, order_id, OrdersModel.STATUS_APPROVED)
+            except OrderError as e:
+                raise StoreComponentError(e.code, {
+                    "error": {
+                        "code": "FAILED_TO_APPROVE",
+                        "message": e.message
+                    }
+                })
+            else:
+                result = True
+        else:
+            try:
+                result = yield orders.update_order_status_reliable(
+                    gamespace_id, order_id, OrdersModel.STATUS_CREATED, OrdersModel.STATUS_APPROVED)
+            except OrderError as e:
+                raise StoreComponentError(e.code, {
+                    "error": {
+                        "code": "FAILED_TO_APPROVE",
+                        "message": e.message
+                    }
+                })
 
         if not result:
             raise StoreComponentError(409, {
@@ -290,9 +316,7 @@ class XsollaStoreComponent(StoreComponent):
             })
 
         try:
-            logging.info("kek = " + account)
             result = yield self.internal.request("login", "check_account_exists", account=str(account))
-            logging.info("kek2 = " + str(account))
         except InternalError as e:
             raise StoreComponentError(500, {
                 "error": {
