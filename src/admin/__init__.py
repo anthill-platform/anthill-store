@@ -972,11 +972,13 @@ class NewStoreItemController(a.AdminController):
                 raise a.ActionError("Failed to clone item: " + e.message)
 
             item_name = item.name
-            item_data = item.data
+            item_public_data = item.public_data
+            item_private_data = item.private_data
             item_method_data = item.method_data
         else:
             item_name = ""
-            item_data = {}
+            item_public_data = {}
+            item_private_data = {}
             item_method_data = {}
 
         try:
@@ -1014,7 +1016,8 @@ class NewStoreItemController(a.AdminController):
             "private_item_scheme": private_item_scheme,
             "billing_fields": method_instance.render(),
             "item_name": item_name,
-            "item_data": item_data
+            "item_public_data": item_public_data,
+            "item_private_data": item_private_data,
         }
 
         data.update(method_instance.get())

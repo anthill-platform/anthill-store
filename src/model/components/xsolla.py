@@ -1,10 +1,9 @@
-
 from tornado.gen import coroutine, Return
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest, HTTPError
 
 from . import StoreComponent, StoreComponents, StoreComponentError
 
-from .. order import OrdersModel, OrderError
+from ..order import OrdersModel, OrderError
 
 from common import to_int
 from common.social import APIError
@@ -18,7 +17,6 @@ import hashlib
 
 
 class XsollaStoreComponent(StoreComponent):
-
     API_URL = "https://api.xsolla.com"
 
     def __init__(self):
@@ -232,6 +230,16 @@ class XsollaStoreComponent(StoreComponent):
 
         dry_run = transaction.get("dry_run", 0) == 1
 
+        try:
+            transaction_id = transaction["id"]
+        except KeyError:
+            raise StoreComponentError(400, {
+                "error": {
+                    "code": "INVALID_PARAMETER",
+                    "message": "transaction id is not defined"
+                }
+            })
+
         if dry_run and not self.sandbox:
             raise StoreComponentError(400, {
                 "error": {
@@ -254,7 +262,11 @@ class XsollaStoreComponent(StoreComponent):
 
         if dry_run:
             try:
-                yield orders.update_order_status(gamespace_id, order_id, OrdersModel.STATUS_APPROVED)
+                yield orders.update_order_info(
+                    gamespace_id, order_id, OrdersModel.STATUS_APPROVED,
+                    {
+                        "transaction_id": transaction_id
+                    })
             except OrderError as e:
                 raise StoreComponentError(e.code, {
                     "error": {
@@ -267,7 +279,10 @@ class XsollaStoreComponent(StoreComponent):
         else:
             try:
                 result = yield orders.update_order_status_reliable(
-                    gamespace_id, order_id, OrdersModel.STATUS_CREATED, OrdersModel.STATUS_APPROVED)
+                    gamespace_id, order_id, OrdersModel.STATUS_CREATED, OrdersModel.STATUS_APPROVED,
+                    {
+                        "transaction_id": transaction_id
+                    })
             except OrderError as e:
                 raise StoreComponentError(e.code, {
                     "error": {
@@ -287,7 +302,6 @@ class XsollaStoreComponent(StoreComponent):
         raise Return({
             "status": "OK"
         })
-
 
     @coroutine
     def __notification_user_validation__(self, app, gamespace_id, store_id, arguments, headers, body):
@@ -336,5 +350,6 @@ class XsollaStoreComponent(StoreComponent):
         raise Return({
             "status": "OK"
         })
+
 
 StoreComponents.register_component("xsolla", XsollaStoreComponent)

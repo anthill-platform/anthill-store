@@ -299,7 +299,7 @@ class OrdersModel(Model):
 
     @coroutine
     @validate(gamespace_id="int", order_id="int", old_status="str_name", new_status="str_name")
-    def update_order_status_reliable(self, gamespace_id, order_id, old_status, new_status):
+    def update_order_status_reliable(self, gamespace_id, order_id, old_status, new_status, new_info=None):
         try:
             with (yield self.db.acquire(auto_commit=False)) as db:
 
@@ -314,12 +314,17 @@ class OrdersModel(Model):
                     if not order:
                         raise Return(False)
 
+                    order_info = order["order_info"]
+
+                    if isinstance(new_info, dict):
+                        order_info.update(new_info)
+
                     yield db.execute(
                         """
                             UPDATE `orders`
-                            SET `order_status`=%s
+                            SET `order_status`=%s, `order_info`=%s
                             WHERE `order_id`=%s AND `gamespace_id`=%s;
-                        """, new_status, order_id, gamespace_id)
+                        """, new_status, ujson.dumps(order_info), order_id, gamespace_id)
 
                     raise Return(True)
 
@@ -402,7 +407,7 @@ class OrdersModel(Model):
 
             if info:
                 result.update(info)
-                yield self.update_order_info(gamespace_id, order_id, OrdersModel.STATUS_CREATED, info, db=db)
+                yield self.update_order_status(gamespace_id, order_id, OrdersModel.STATUS_CREATED, db=db)
 
             raise Return(result)
 
