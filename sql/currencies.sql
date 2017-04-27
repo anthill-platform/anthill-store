@@ -8,4 +8,4 @@ CREATE TABLE `currencies` (
   `currency_label` varchar(64) NOT NULL DEFAULT '',
   PRIMARY KEY (`currency_id`),
   UNIQUE KEY `currency_name` (`currency_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;

@@ -213,14 +213,16 @@ class InternalHandler(object):
     def update_orders(self, gamespace, account):
 
         try:
-            result = yield self.application.orders.update_orders(
+            updated_orders = yield self.application.orders.update_orders(
                 gamespace, account)
         except OrderError as e:
             raise InternalError(e.code, e.message)
         except ValidationError as e:
             raise InternalError(400, e.message)
 
-        raise Return(result)
+        raise Return({
+            "orders": updated_orders
+        })
 
 
 class XsollaFrontHandler(RequestHandler):
