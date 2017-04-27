@@ -103,13 +103,15 @@ class OrdersHandler(AuthenticatedHandler):
         account_id = self.token.account
 
         try:
-            result = yield orders.update_orders(gamespace_id, account_id)
+            updated_orders = yield orders.update_orders(gamespace_id, account_id)
         except OrderError as e:
             raise HTTPError(e.code, e.message)
         except ValidationError as e:
             raise HTTPError(400, e.message)
 
-        self.dumps(result)
+        self.dumps({
+            "orders": updated_orders
+        })
 
 
 class WebHookHandler(AuthenticatedHandler):
