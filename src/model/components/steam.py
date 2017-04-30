@@ -40,6 +40,10 @@ class SteamStoreComponent(StoreComponent):
     @coroutine
     def update_order(self, app, gamespace_id, account_id, order, order_info):
 
+        if order.status == OrdersModel.STATUS_APPROVED:
+            result = (OrdersModel.STATUS_SUCCEEDED, {})
+            raise Return(result)
+        
         order_id = order.order_id
         steam_api = app.steam_api
 
