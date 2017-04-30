@@ -72,7 +72,7 @@ class SteamStoreComponent(StoreComponent):
             error = response.get("error", {})
             code = error.get("errorcode", 500)
             reason = error.get("errordesc", "Unknown")
-            raise StoreComponentError(code, reason)
+            raise StoreComponentError(code, reason, update_status=(OrdersModel.STATUS_ERROR, {}))
 
         params = response.get("params", {})
 
@@ -127,10 +127,10 @@ class SteamStoreComponent(StoreComponent):
             "description[0]": description
         }
 
-        category = item.data.get("category")
+        category = item.public_data.get("category")
 
         if category:
-            arguments["category[0]"] = arguments
+            arguments["category[0]"] = category
 
         arguments = {
             k: unicode(v).encode("UTF-8")

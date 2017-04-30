@@ -188,6 +188,13 @@ class XsollaStoreComponent(StoreComponent):
             }
         }
 
+        user_name = env.get("user_name")
+
+        if user_name:
+            arguments["user"]["name"] = {
+                "value": user_name
+            }
+
         if self.sandbox:
             arguments["settings"]["mode"] = "sandbox"
 

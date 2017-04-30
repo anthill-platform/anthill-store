@@ -462,7 +462,8 @@ class OrdersModel(Model):
                 "total": order.total,
                 "order_id": to_int(order.order_id),
                 "public": order_info.item.public_data,
-                "private": order_info.item.private_data
+                "private": order_info.item.private_data,
+                "info": order.info
             })
 
     @coroutine
@@ -536,6 +537,7 @@ class OrdersModel(Model):
 
                     info = order.info or {}
                     info.update(new_info)
+                    order.info = info
 
                     yield db.execute(
                         """
