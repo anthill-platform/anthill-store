@@ -314,7 +314,7 @@ class OrdersModel(Model):
                     if not order:
                         raise Return(False)
 
-                    order_info = order["order_info"]
+                    order_info = order["order_info"] or {}
 
                     if isinstance(new_info, dict):
                         order_info.update(new_info)
