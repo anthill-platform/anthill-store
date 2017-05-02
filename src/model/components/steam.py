@@ -76,7 +76,22 @@ class SteamStoreComponent(StoreComponent):
             error = response.get("error", {})
             code = error.get("errorcode", 500)
             reason = error.get("errordesc", "Unknown")
-            raise StoreComponentError(code, reason, update_status=(OrdersModel.STATUS_ERROR, {}))
+
+            if code in [5, 7]:
+                # try again later
+                raise StoreComponentError(code, reason)
+
+            if code >= 10:
+                # rejected
+                raise StoreComponentError(code, reason, update_status=(OrdersModel.STATUS_REJECTED, {
+                    "error_code": code,
+                    "error_reason": reason
+                }))
+
+            raise StoreComponentError(code, reason, update_status=(OrdersModel.STATUS_ERROR, {
+                "error_code": code,
+                "error_reason": reason
+            }))
 
         params = response.get("params", {})
 

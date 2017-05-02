@@ -192,6 +192,7 @@ class OrdersModel(Model):
     STATUS_CREATED = "CREATED"
     STATUS_APPROVED = "APPROVED"
     STATUS_SUCCEEDED = "SUCCEEDED"
+    STATUS_REJECTED = "REJECTED"
 
     def __init__(self, app, db, tiers):
         self.app = app
@@ -476,6 +477,15 @@ class OrdersModel(Model):
         raise OrderError(409, "Order has been succeeded already")
 
     @coroutine
+    def __process_order_rejected__(self, gamespace_id, order, order_info, update_status, account_id, db):
+        logging.warning("Processing already rejected order", extra={
+            "gamespace": gamespace_id,
+            "order": order.order_id,
+            "account": account_id
+        })
+        raise OrderError(409, "Order has been rejected already")
+
+    @coroutine
     @validate(gamespace_id="int", store_name="str_name", component_name="str_name",
               arguments="json_dict", headers="json_dict", body="str")
     def order_callback(self, gamespace_id, store_name, component_name, arguments, headers, body):
@@ -616,5 +626,6 @@ class OrdersModel(Model):
         STATUS_ERROR: __process_order_error__,
         STATUS_CREATED: __process_order_processing__,
         STATUS_APPROVED: __process_order_processing__,
-        STATUS_SUCCEEDED: __process_order_succeeded__
+        STATUS_SUCCEEDED: __process_order_succeeded__,
+        STATUS_REJECTED: __process_order_rejected__
     }

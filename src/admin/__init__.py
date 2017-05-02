@@ -1902,6 +1902,7 @@ class OrdersController(a.AdminController):
                         OrdersModel.STATUS_NEW: a.status("New", "info", "check"),
                         OrdersModel.STATUS_CREATED: a.status("Created", "info", "refresh fa-spin"),
                         OrdersModel.STATUS_SUCCEEDED: a.status("Succeeded", "success", "check"),
+                        OrdersModel.STATUS_REJECTED: a.status("Rejected", "danger", "user-times"),
                         OrdersModel.STATUS_ERROR: a.status("Error", "danger", "exclamation-triangle")
                     }.get(order.order.status, a.status(order.order.status, "default", "refresh")),
                 ],
@@ -2076,6 +2077,7 @@ class OrdersController(a.AdminController):
                 "any": "Any",
                 OrdersModel.STATUS_NEW: "New",
                 OrdersModel.STATUS_SUCCEEDED: "Succeeded",
+                OrdersModel.STATUS_REJECTED: "Rejected",
                 OrdersModel.STATUS_ERROR: "Error",
                 OrdersModel.STATUS_CREATED: "Created"
             }
