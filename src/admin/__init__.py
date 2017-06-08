@@ -953,7 +953,7 @@ class NewStoreItemController(a.AdminController):
             item_id=item_id)
 
     @coroutine
-    @validate(store_id="int", category_id="int", billing_method="str_name", clone="int_or_none")
+    @validate(store_id="int", category_id="int", billing_method="str_name", clone="int")
     def get(self, store_id, category_id, billing_method, clone=None):
 
         stores = self.application.stores
@@ -1985,8 +1985,8 @@ class OrdersController(a.AdminController):
         raise a.Redirect("orders", store_id=store_id, **filters)
 
     @coroutine
-    @validate(store_id="int", page="int_or_none", order_item="int_or_none", order_tier="int_or_none",
-              order_account="int_or_none", order_status="str_or_none", order_currency="str_or_none")
+    @validate(store_id="int", page="int", order_item="int", order_tier="int",
+              order_account="int", order_status="str", order_currency="str")
     def get(self,
             store_id,
             page=1,
