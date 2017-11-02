@@ -1,9 +1,9 @@
 
 from tornado.gen import coroutine, Return
-from tornado.web import HTTPError, RequestHandler
+from tornado.web import HTTPError
 
 from common.access import scoped, AccessToken
-from common.handler import AuthenticatedHandler
+from common.handler import AuthenticatedHandler, AnthillRequestHandler
 from common.validate import ValidationError, validate
 from common.internal import InternalError
 from common import to_int
@@ -225,7 +225,7 @@ class InternalHandler(object):
         })
 
 
-class XsollaFrontHandler(RequestHandler):
+class XsollaFrontHandler(AnthillRequestHandler):
     def get(self):
         access_token = self.get_argument("access_token")
         sandbox = self.get_argument("sandbox", "false") == "true"
