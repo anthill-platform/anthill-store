@@ -7,5 +7,5 @@ CREATE TABLE `currencies` (
   `currency_symbol` varchar(8) NOT NULL DEFAULT '',
   `currency_label` varchar(64) NOT NULL DEFAULT '',
   PRIMARY KEY (`currency_id`),
-  UNIQUE KEY `currency_name` (`currency_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+  UNIQUE KEY `gamespace_id` (`gamespace_id`,`currency_name`)
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8;
