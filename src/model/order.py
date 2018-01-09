@@ -1,5 +1,6 @@
 
 from tornado.gen import coroutine, Return
+from tornado.ioloop import PeriodicCallback
 
 from store import StoreAdapter, StoreComponentAdapter, StoreError, StoreComponentNotFound
 from item import ItemAdapter
@@ -198,6 +199,40 @@ class OrdersModel(Model):
         self.app = app
         self.db = db
         self.tiers = tiers
+
+        if app.monitoring:
+            logging.info("[room] Orders monitoring enabled.")
+            self.monitoring_report_callback = PeriodicCallback(self.__update_monitoring_status__, 60000)
+        else:
+            self.monitoring_report_callback = None
+
+    @coroutine
+    def __update_monitoring_status__(self):
+
+        successful_orders = yield self.db.query("""
+            SELECT `order_currency`, SUM(`order_total`) AS `order_total`
+            FROM `orders`
+            WHERE `order_status`='SUCCEEDED' AND `orders`.`order_time` > DATE_SUB(NOW(), INTERVAL 1 MINUTE)
+            GROUP BY `order_currency`
+        """)
+
+        for successful_order in successful_orders:
+            self.app.monitor_action("successful_orders", values={
+                "total": successful_order["order_total"]
+            }, currency=successful_order["order_currency"])
+
+    @coroutine
+    def started(self):
+        yield super(OrdersModel, self).started()
+        if self.monitoring_report_callback:
+            self.monitoring_report_callback.start()
+            yield self.__update_monitoring_status__()
+
+    @coroutine
+    def stopped(self):
+        if self.monitoring_report_callback:
+            self.monitoring_report_callback.stop()
+        yield super(OrdersModel, self).stopped()
 
     def get_setup_tables(self):
         return ["orders"]
