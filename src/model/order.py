@@ -284,6 +284,8 @@ class OrdersModel(Model):
                 """, ujson.dumps(info), status, order_id, gamespace_id)
         except DatabaseError as e:
             raise OrderError(500, e.args[1])
+        else:
+            self.app.monitor_rate("orders", "updated", status=status)
 
     @coroutine
     @validate(gamespace_id="int", order_id="int", status="str_name")
@@ -297,10 +299,15 @@ class OrdersModel(Model):
                 """, status, order_id, gamespace_id)
         except DatabaseError as e:
             raise OrderError(500, e.args[1])
+        else:
+            self.app.monitor_rate("orders", "updated", status=status)
 
     @coroutine
     @validate(gamespace_id="int", order_id="int", old_status="str_name", new_status="str_name")
     def update_order_status_reliable(self, gamespace_id, order_id, old_status, new_status, new_info=None):
+
+        application = self.app
+
         try:
             with (yield self.db.acquire(auto_commit=False)) as db:
 
@@ -326,6 +333,8 @@ class OrdersModel(Model):
                             SET `order_status`=%s, `order_info`=%s
                             WHERE `order_id`=%s AND `gamespace_id`=%s;
                         """, new_status, ujson.dumps(order_info), order_id, gamespace_id)
+
+                    application.monitor_rate("orders", "updated", status=new_status)
 
                     raise Return(True)
 
@@ -519,6 +528,8 @@ class OrdersModel(Model):
     @validate(gamespace_id="int", order_id="int", account_id="int")
     def update_order(self, gamespace_id, order_id, account_id, order_info=None):
 
+        application = self.app
+
         with (yield self.db.acquire(auto_commit=False)) as db:
             if not order_info:
                 order_info = yield self.get_order_info(gamespace_id, order_id, account_id, db=db)
@@ -556,6 +567,8 @@ class OrdersModel(Model):
                             WHERE `orders`.`order_id`=%s AND `orders`.`gamespace_id`=%s
                                 AND `orders`.`account_id`=%s;
                         """, new_status, ujson.dumps(info), order_id, gamespace_id, account_id)
+
+                    application.monitor_rate("orders", "updated", status=new_status)
 
                     logging.info("Updated order '{0}' status to: {1}".format(order_id, new_status))
 
