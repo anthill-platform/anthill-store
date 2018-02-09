@@ -8,8 +8,8 @@ from common.validate import ValidationError, validate
 from common.internal import InternalError
 from common import to_int
 
-from model.store import StoreNotFound
-from model.order import OrderError, NoOrderError
+from model.store import StoreNotFound, StoreError
+from model.order import OrderError, NoOrderError, OrderQueryError
 
 import ujson
 
@@ -190,6 +190,63 @@ class InternalHandler(object):
             raise InternalError(400, e.message)
 
         raise Return(result)
+
+    @coroutine
+    @validate(gamespace="int", store="str_name", account="int", info="json_dict")
+    def list_orders(self, gamespace, store=None, account=None, info=None):
+
+        orders = self.application.orders
+        stores = self.application.stores
+
+        if (account is None) and (info is None):
+            raise InternalError(404, "Either account or info should be defined.")
+
+        if store:
+            try:
+                store_id = yield stores.find_store(gamespace, store)
+            except StoreNotFound:
+                raise InternalError(404, "No such store")
+            except StoreError as e:
+                raise InternalError(500, e.message)
+        else:
+            store_id = None
+
+        q = orders.orders_query(gamespace, store_id)
+
+        if account:
+            q.account_id = account
+
+        if info:
+            q.info = info
+
+        try:
+            orders = yield q.query()
+        except OrderQueryError as e:
+            raise InternalError(e.code, e.message)
+        except ValidationError as e:
+            raise InternalError(400, e.message)
+
+        result = {
+            a.order.order_id: {
+                "item": {
+                    "name": a.item.name,
+                    "public": a.item.public_data
+                },
+                "order": {
+                    "status": a.order.status,
+                    "time": str(a.order.time),
+                    "currency": a.order.currency,
+                    "amount": a.order.amount
+                },
+                "account": a.order.account_id,
+                "component": a.component.name
+            }
+            for a in orders
+        }
+
+        raise Return({
+            "orders": result
+        })
 
     @coroutine
     @validate(gamespace="int", account="int", order_id="int")

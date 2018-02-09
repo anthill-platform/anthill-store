@@ -9,7 +9,7 @@ from tier import TierError, TierNotFound, TierAdapter
 from components import StoreComponents, StoreComponentError, NoSuchStoreComponentError
 
 from common.model import Model
-from common.database import DatabaseError
+from common.database import DatabaseError, format_conditions_json
 from common.validate import validate
 from common import to_int
 
@@ -64,15 +64,16 @@ class NoOrderError(Exception):
 
 
 class OrderQueryError(Exception):
-    def __init__(self, message):
+    def __init__(self, code, message):
+        self.code = code
         self.message = message
 
     def __str__(self):
-        return self.message
+        return str(self.code) + ": " + self.message
 
 
 class OrderQuery(object):
-    def __init__(self, gamespace_id, store_id, db):
+    def __init__(self, gamespace_id, db, store_id=None):
         self.gamespace_id = gamespace_id
         self.store_id = store_id
         self.db = db
@@ -83,6 +84,7 @@ class OrderQuery(object):
         self.component = None
         self.status = None
         self.currency = None
+        self.info = None
 
         self.offset = 0
         self.limit = 0
@@ -90,7 +92,6 @@ class OrderQuery(object):
     def __values__(self):
         conditions = [
             "`orders`.`gamespace_id`=%s",
-            "`orders`.`store_id`=%s",
             "`orders`.`component_id`=`store_components`.`component_id`",
             "`orders`.`gamespace_id`=`store_components`.`gamespace_id`",
             "`items`.`item_id`=`orders`.`item_id`",
@@ -99,9 +100,12 @@ class OrderQuery(object):
         ]
 
         data = [
-            str(self.gamespace_id),
-            str(self.store_id)
+            str(self.gamespace_id)
         ]
+
+        if self.store_id:
+            conditions.append("`orders`.`store_id`=%s")
+            data.append(str(self.store_id))
 
         if self.tier_id:
             conditions.append("`orders`.`tier_id`=%s")
@@ -126,6 +130,11 @@ class OrderQuery(object):
         if self.status:
             conditions.append("`orders`.`order_status`=%s")
             data.append(str(self.status))
+
+        if self.info:
+            for condition, values in format_conditions_json('order_info', self.info):
+                conditions.append(condition)
+                data.extend(values)
 
         return conditions, data
 
@@ -157,7 +166,7 @@ class OrderQuery(object):
             try:
                 result = yield self.db.get(query, *data)
             except DatabaseError as e:
-                raise OrderQueryError("Failed to get message: " + e.args[1])
+                raise OrderQueryError(500, "Failed to get message: " + e.args[1])
 
             if not result:
                 raise Return(None)
@@ -167,7 +176,7 @@ class OrderQuery(object):
             try:
                 result = yield self.db.query(query, *data)
             except DatabaseError as e:
-                raise OrderQueryError("Failed to query messages: " + e.args[1])
+                raise OrderQueryError(500, "Failed to query messages: " + e.args[1])
 
             count_result = 0
 
@@ -379,8 +388,8 @@ class OrdersModel(Model):
         except DatabaseError as e:
             raise OrderError(500, e.args[1])
 
-    def orders_query(self, gamespace, store_id):
-        return OrderQuery(gamespace, store_id, self.db)
+    def orders_query(self, gamespace, store_id=None):
+        return OrderQuery(gamespace, self.db, store_id)
 
     @coroutine
     @validate(gamespace_id="int", account_id="int", store="str_name", component="str_name", item="str_name",

@@ -1957,6 +1957,8 @@ class OrdersController(a.AdminController):
                     a.field("Status", "select", "primary", order=4, values=data["order_statuses"]),
                 "order_currency":
                     a.field("Currency", "select", "primary", order=5, values=data["currencies_list"]),
+                "order_info":
+                    a.field("Info", "json", "primary", order=6, height=100),
             }, methods={
                 "filter": a.method("Filter", "primary")
             }, data=data, icon="filter"),
@@ -1986,7 +1988,8 @@ class OrdersController(a.AdminController):
 
     @coroutine
     @validate(store_id="int", page="int", order_item="int", order_tier="int",
-              order_account="int", order_status="str", order_currency="str")
+              order_account="int", order_status="str", order_currency="str",
+              order_info="load_json_dict")
     def get(self,
             store_id,
             page=1,
@@ -1994,7 +1997,8 @@ class OrdersController(a.AdminController):
             order_tier=None,
             order_account=None,
             order_status=None,
-            order_currency=None):
+            order_currency=None,
+            order_info=None):
 
         stores = self.application.stores
         items = self.application.items
@@ -2040,6 +2044,9 @@ class OrdersController(a.AdminController):
         if order_currency != "any":
             q.currency = order_currency
 
+        if order_info:
+            q.info = order_info
+
         orders, count = yield q.query(count=True)
         pages = int(math.ceil(float(count) / float(OrdersController.ORDERS_PER_PAGE)))
 
@@ -2069,6 +2076,7 @@ class OrdersController(a.AdminController):
             "order_status": order_status or "any",
             "order_account": order_account or "0",
             "order_currency": order_currency or "any",
+            "order_info": order_info or {},
             "store_name": store.name,
             "store_items": store_items,
             "store_tiers": store_tiers,
