@@ -176,6 +176,8 @@ class SteamStoreComponent(StoreComponent):
         if failure:
             error = response.get("error", {})
             code = error.get("errorcode", 500)
+            if code < 100:
+                code += 480
             reason = error.get("errordesc", "Unknown")
             raise StoreComponentError(code, reason)
 
@@ -184,12 +186,12 @@ class SteamStoreComponent(StoreComponent):
         steam_order_id = params.get("orderid", 0)
 
         if str(steam_order_id) != str(order_id):
-            raise StoreComponentError(500, "OrderID does not correspond the steam OrderId")
+            raise StoreComponentError(406, "OrderID does not correspond the steam OrderId")
 
         transaction_id = params.get("transid", 0)
 
         if not transaction_id:
-            raise StoreComponentError(500, "No TransactionID")
+            raise StoreComponentError(412, "No TransactionID")
 
         raise Return({
             "transaction_id": transaction_id
