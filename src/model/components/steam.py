@@ -11,11 +11,21 @@ import urllib
 import ujson
 
 
-class SteamStoreComponent(StoreComponent):
+class SteamErrorCodes(object):
+    @staticmethod
+    def convert_to_http(code):
+        if code < 100:
+            return code + 450
+        if code < 200:
+            return code + 380
+        return code
 
+
+class SteamStoreComponent(StoreComponent):
     API_URL = "https://api.steampowered.com/ISteamMicroTxn"
     SANDBOX_API_URL = "https://api.steampowered.com/ISteamMicroTxnSandbox"
     PURCHASE_AMOUNT_LIMIT = 1000000
+
 
     def __init__(self):
         super(SteamStoreComponent, self).__init__()
@@ -43,7 +53,7 @@ class SteamStoreComponent(StoreComponent):
         if order.status == OrdersModel.STATUS_APPROVED:
             result = (OrdersModel.STATUS_SUCCEEDED, {})
             raise Return(result)
-        
+
         order_id = order.order_id
         steam_api = app.steam_api
 
@@ -74,24 +84,26 @@ class SteamStoreComponent(StoreComponent):
 
         if failure:
             error = response.get("error", {})
-            code = error.get("errorcode", 500)
+            code = error.get("errorcode", 99)
             reason = error.get("errordesc", "Unknown")
 
             if code in [5, 7]:
                 # try again later
-                raise StoreComponentError(code, reason)
+                raise StoreComponentError(SteamErrorCodes.convert_to_http(code), reason)
 
             if code >= 10:
                 # rejected
-                raise StoreComponentError(code, reason, update_status=(OrdersModel.STATUS_REJECTED, {
-                    "error_code": code,
-                    "error_reason": reason
-                }))
+                raise StoreComponentError(SteamErrorCodes.convert_to_http(code), reason,
+                                          update_status=(OrdersModel.STATUS_REJECTED, {
+                                              "error_code": code,
+                                              "error_reason": reason
+                                          }))
 
-            raise StoreComponentError(code, reason, update_status=(OrdersModel.STATUS_ERROR, {
-                "error_code": code,
-                "error_reason": reason
-            }))
+            raise StoreComponentError(SteamErrorCodes.convert_to_http(code), reason,
+                                      update_status=(OrdersModel.STATUS_ERROR, {
+                                          "error_code": code,
+                                          "error_reason": reason
+                                      }))
 
         params = response.get("params", {})
 
@@ -175,11 +187,9 @@ class SteamStoreComponent(StoreComponent):
 
         if failure:
             error = response.get("error", {})
-            code = error.get("errorcode", 500)
-            if code < 100:
-                code += 480
+            code = error.get("errorcode", 99)
             reason = error.get("errordesc", "Unknown")
-            raise StoreComponentError(code, reason)
+            raise StoreComponentError(SteamErrorCodes.convert_to_http(code), reason)
 
         params = response.get("params", {})
 
