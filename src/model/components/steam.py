@@ -1,9 +1,8 @@
-
 from tornado.gen import coroutine, Return
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest, HTTPError
 
 from . import StoreComponent, StoreComponents, StoreComponentError
-from .. order import OrdersModel
+from ..order import OrdersModel
 
 from common.social import steam
 
@@ -25,7 +24,6 @@ class SteamStoreComponent(StoreComponent):
     API_URL = "https://api.steampowered.com/ISteamMicroTxn"
     SANDBOX_API_URL = "https://api.steampowered.com/ISteamMicroTxnSandbox"
     PURCHASE_AMOUNT_LIMIT = 1000000
-
 
     def __init__(self):
         super(SteamStoreComponent, self).__init__()
@@ -73,7 +71,12 @@ class SteamStoreComponent(StoreComponent):
         try:
             response = yield self.client.fetch(request)
         except HTTPError as e:
-            raise StoreComponentError(e.code, e.message)
+            raise StoreComponentError(
+                e.code, e.message,
+                update_status=(OrdersModel.STATUS_ERROR, {
+                    "http_error_code": e.code,
+                    "http_error_reason": e.message
+                }))
 
         try:
             response = ujson.loads(response.body)["response"]

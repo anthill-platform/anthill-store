@@ -199,7 +199,7 @@ class InternalHandler(object):
         stores = self.application.stores
 
         if (account is None) and (info is None):
-            raise InternalError(404, "Either account or info should be defined.")
+            raise InternalError(400, "Either account or info should be defined.")
 
         if store:
             try:
