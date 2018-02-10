@@ -7,7 +7,7 @@ CREATE TABLE `orders` (
   `component_id` int(11) unsigned NOT NULL,
   `account_id` int(11) unsigned NOT NULL,
   `order_amount` int(11) unsigned NOT NULL,
-  `order_status` enum('NEW','CREATED','SUCCEEDED','ERROR','REJECTED','APPROVED') NOT NULL DEFAULT 'NEW',
+  `order_status` enum('NEW','CREATED','SUCCEEDED','ERROR','REJECTED','APPROVED','RETRY') NOT NULL DEFAULT 'NEW',
   `order_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `order_currency` varchar(16) NOT NULL DEFAULT '',
   `order_total` float NOT NULL,

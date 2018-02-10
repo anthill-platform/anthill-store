@@ -197,12 +197,20 @@ class OrderQuery(object):
 
 class OrdersModel(Model):
 
+    # The order has been just created, but yet not filed into the system
     STATUS_NEW = "NEW"
-    STATUS_ERROR = "ERROR"
+    # The order has been just created, and it's in the system now
     STATUS_CREATED = "CREATED"
+    # The order has failed due to user issues (insufficient funds etc)
+    STATUS_ERROR = "ERROR"
+    # The order has failed due to network issues, thus should be retried
+    STATUS_RETRY = "RETRY"
+    # The order has been approved by a third party, the order update is required
     STATUS_APPROVED = "APPROVED"
-    STATUS_SUCCEEDED = "SUCCEEDED"
+    # The order has been rejected by a user
     STATUS_REJECTED = "REJECTED"
+    # The order has been finalized
+    STATUS_SUCCEEDED = "SUCCEEDED"
 
     def __init__(self, app, db, tiers):
         self.app = app
@@ -635,7 +643,7 @@ class OrdersModel(Model):
 
         with (yield self.db.acquire()) as db:
 
-            order_statuses = [OrdersModel.STATUS_CREATED, OrdersModel.STATUS_APPROVED]
+            order_statuses = [OrdersModel.STATUS_CREATED, OrdersModel.STATUS_APPROVED, OrdersModel.STATUS_RETRY]
 
             try:
                 orders_data = yield db.query(
@@ -682,6 +690,7 @@ class OrdersModel(Model):
     ORDER_PROCESSORS = {
         STATUS_ERROR: __process_order_error__,
         STATUS_CREATED: __process_order_processing__,
+        STATUS_RETRY: __process_order_processing__,
         STATUS_APPROVED: __process_order_processing__,
         STATUS_SUCCEEDED: __process_order_succeeded__,
         STATUS_REJECTED: __process_order_rejected__

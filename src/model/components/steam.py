@@ -8,6 +8,7 @@ from common.social import steam
 
 import urllib
 import ujson
+import logging
 
 
 class SteamErrorCodes(object):
@@ -71,9 +72,10 @@ class SteamStoreComponent(StoreComponent):
         try:
             response = yield self.client.fetch(request)
         except HTTPError as e:
+            logging.exception("Steam FinalizeTxn Connectivity issue")
             raise StoreComponentError(
                 e.code, e.message,
-                update_status=(OrdersModel.STATUS_ERROR, {
+                update_status=(OrdersModel.STATUS_RETRY, {
                     "http_error_code": e.code,
                     "http_error_reason": e.message
                 }))
