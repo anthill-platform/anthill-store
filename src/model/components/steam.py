@@ -72,6 +72,14 @@ class SteamStoreComponent(StoreComponent):
         try:
             response = yield self.client.fetch(request)
         except HTTPError as e:
+            if e.code == 400:
+                raise StoreComponentError(
+                    e.code, e.message,
+                    update_status=(OrdersModel.STATUS_ERROR, {
+                        "http_error_code": e.code,
+                        "http_error_reason": e.response.body if e.response else e.message
+                    }))
+
             logging.exception("Steam FinalizeTxn Connectivity issue: {0}".format(
                 e.response.body if e.response else e.message
             ))
