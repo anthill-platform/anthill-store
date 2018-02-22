@@ -1,21 +1,21 @@
 
 from tornado.gen import coroutine, Return
 
-from common.database import DatabaseError
+from common.database import DatabaseError, DuplicateError
 from common.model import Model
-from common import to_int
+from common.validate import validate
 
 import ujson
 
 
 class CurrencyAdapter(object):
     def __init__(self, record):
-        self.currency_id = record["currency_id"]
-        self.name = record["currency_name"]
-        self.title = record["currency_title"]
-        self.format = record["currency_format"]
-        self.symbol = record["currency_symbol"]
-        self.label = record["currency_label"]
+        self.currency_id = record.get("currency_id")
+        self.name = record.get("currency_name")
+        self.title = record.get("currency_title")
+        self.format = record.get("currency_format")
+        self.symbol = record.get("currency_symbol")
+        self.label = record.get("currency_label")
 
 
 class CurrencyError(Exception):
@@ -80,9 +80,9 @@ class CurrencyModel(Model):
         raise Return(CurrencyAdapter(result))
 
     @coroutine
-    def list_currencies(self, gamespace_id):
+    def list_currencies(self, gamespace_id, db=None):
         try:
-            result = yield self.db.query("""
+            result = yield (db or self.db).query("""
                 SELECT *
                 FROM `currencies`
                 WHERE `gamespace_id`=%s;
@@ -136,18 +136,19 @@ class CurrencyNotFound(Exception):
 
 class TierAdapter(object):
     def __init__(self, record):
-        self.tier_id = record["tier_id"]
-        self.store_id = record["store_id"]
-        self.name = record["tier_name"]
-        self.product = record["tier_product"]
-        self.prices = record["tier_prices"]
+        self.tier_id = str(record.get("tier_id"))
+        self.store_id = str(record.get("store_id"))
+        self.name = record.get("tier_name")
+        self.product = record.get("tier_product")
+        self.title = record.get("tier_title")
+        self.prices = record.get("tier_prices", {})
 
 
 class TierComponentAdapter(object):
     def __init__(self, record):
-        self.component_id = record["component_id"]
-        self.name = record["component"]
-        self.data = record["component_data"]
+        self.component_id = record.get("component_id")
+        self.name = record.get("component")
+        self.data = record.get("component_data")
 
 
 class TierComponentNotFound(Exception):
@@ -219,9 +220,9 @@ class TierModel(Model):
         raise Return(TierComponentAdapter(result))
 
     @coroutine
-    def get_tier(self, gamespace_id, tier_id):
+    def get_tier(self, gamespace_id, tier_id, db=None):
         try:
-            result = yield self.db.get("""
+            result = yield (db or self.db).get("""
                 SELECT *
                 FROM `tiers`
                 WHERE `tier_id`=%s AND `gamespace_id`=%s;
@@ -264,9 +265,9 @@ class TierModel(Model):
             raise Return(map(TierComponentAdapter, result))
 
     @coroutine
-    def list_tiers(self, gamespace_id, store_id):
+    def list_tiers(self, gamespace_id, store_id, db=None):
         try:
-            result = yield self.db.query("""
+            result = yield (db or self.db).query("""
                 SELECT *
                 FROM `tiers`
                 WHERE `store_id`=%s AND `gamespace_id`=%s;
@@ -277,32 +278,18 @@ class TierModel(Model):
         raise Return(map(TierAdapter, result))
 
     @coroutine
-    def new_tier(self, gamespace_id, store_id, tier_name, tier_product, tier_prices):
-
-        try:
-            yield self.find_tier(gamespace_id, store_id, tier_name)
-        except TierNotFound:
-            pass
-        else:
-            raise TierError("Tier '{0}' already exists is such store.".format(tier_name))
-
-        if not isinstance(tier_prices, dict):
-            raise TierError("tier_prices should be a dict")
-
-        try:
-            tier_prices = {
-                k: to_int(v)
-                for k, v in tier_prices.iteritems()
-            }
-        except ValueError:
-            raise TierError("Bad price")
+    @validate(gamespace_id="int", store_id="int", tier_name="str_name", tier_title="str", tier_product="str",
+              tier_prices="json_dict_of_ints")
+    def new_tier(self, gamespace_id, store_id, tier_name, tier_title, tier_product, tier_prices):
 
         try:
             tier_id = yield self.db.insert("""
                 INSERT INTO `tiers`
-                (`gamespace_id`, `store_id`, `tier_name`, `tier_product`, `tier_prices`)
-                VALUES (%s, %s, %s, %s, %s);
-            """, gamespace_id, store_id, tier_name, tier_product, ujson.dumps(tier_prices))
+                (`gamespace_id`, `store_id`, `tier_name`, `tier_title`, `tier_product`, `tier_prices`)
+                VALUES (%s, %s, %s, %s, %s, %s);
+            """, gamespace_id, store_id, tier_name, tier_title, tier_product, ujson.dumps(tier_prices))
+        except DuplicateError:
+            raise TierError("Tier with such name already exits in this store")
         except DatabaseError as e:
             raise TierError("Failed to add new tier: " + e.args[1])
 
@@ -332,25 +319,18 @@ class TierModel(Model):
         raise Return(component_id)
 
     @coroutine
-    def update_tier(self, gamespace_id, tier_id, tier_name, tier_product, tier_prices):
-
-        if not isinstance(tier_prices, dict):
-            raise TierError("tier_prices should be a dict")
-
-        try:
-            tier_prices = {
-                k: to_int(v)
-                for k, v in tier_prices.iteritems()
-            }
-        except ValueError:
-            raise TierError("Bad price")
+    @validate(gamespace_id="int", tier_id="int", tier_name="str_name", tier_title="str", tier_product="str",
+              tier_prices="json_dict_of_ints")
+    def update_tier(self, gamespace_id, tier_id, tier_name, tier_title, tier_product, tier_prices):
 
         try:
             yield self.db.execute("""
                 UPDATE `tiers`
-                SET `tier_name`=%s, `tier_product`=%s, `tier_prices`=%s
+                SET `tier_name`=%s, `tier_title`=%s, `tier_product`=%s, `tier_prices`=%s
                 WHERE `tier_id`=%s AND `gamespace_id`=%s;
-            """, tier_name, tier_product, ujson.dumps(tier_prices), tier_id, gamespace_id)
+            """, tier_name, tier_title, tier_product, ujson.dumps(tier_prices), tier_id, gamespace_id)
+        except DuplicateError:
+            raise TierError("A tier with this name already exists in this store")
         except DatabaseError as e:
             raise TierError("Failed to update tier: " + e.args[1])
 

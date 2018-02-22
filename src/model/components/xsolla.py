@@ -146,8 +146,8 @@ class XsollaStoreComponent(StoreComponent):
         raise Return(result)
 
     @coroutine
-    def new_order(self, app, gamespace_id, account_id, order_id,
-                  currency, price, amount, total, store, item, env):
+    def new_order(self, app, gamespace_id, account_id, order_id, currency,
+                  price, amount, total, store, item, env, campaign_item):
 
         xsolla_api = app.xsolla_api
 

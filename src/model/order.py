@@ -3,9 +3,9 @@ from tornado.gen import coroutine, Return
 from tornado.ioloop import PeriodicCallback
 
 from store import StoreAdapter, StoreComponentAdapter, StoreError, StoreComponentNotFound
-from item import ItemAdapter
-from billing import IAPBillingMethod
+from item import StoreItemAdapter
 from tier import TierError, TierNotFound, TierAdapter
+from campaign import CampaignError, CampaignItemNotFound
 from components import StoreComponents, StoreComponentError, NoSuchStoreComponentError
 
 from common.model import Model
@@ -32,13 +32,15 @@ class OrderAdapter(object):
         self.currency = data.get("order_currency")
         self.total = data.get("order_total")
         self.info = data.get("order_info")
+        self.campaign_id = data.get("order_campaign_id")
 
 
-class StoreComponentItemAdapter(object):
+class StoreComponentItemTierAdapter(object):
     def __init__(self, data):
         self.store = StoreAdapter(data)
         self.component = StoreComponentAdapter(data)
-        self.item = ItemAdapter(data)
+        self.item = StoreItemAdapter(data)
+        self.tier = TierAdapter(data)
         self.order_id = data.get("order_id", None)
 
 
@@ -46,7 +48,7 @@ class OrderComponentTierItemAdapter(object):
     def __init__(self, data):
         self.order = OrderAdapter(data)
         self.component = StoreComponentAdapter(data)
-        self.item = ItemAdapter(data)
+        self.item = StoreItemAdapter(data)
         self.tier = TierAdapter(data)
 
 
@@ -143,7 +145,7 @@ class OrderQuery(object):
         conditions, data = self.__values__()
 
         query = """
-            SELECT {0} * FROM `orders`, `items`, `store_components`, tiers
+            SELECT {0} * FROM `orders`, `items`, `store_components`, `tiers`
             WHERE {1}
         """.format(
             "SQL_CALC_FOUND_ROWS" if count else "",
@@ -212,10 +214,11 @@ class OrdersModel(Model):
     # The order has been finalized
     STATUS_SUCCEEDED = "SUCCEEDED"
 
-    def __init__(self, app, db, tiers):
+    def __init__(self, app, db, tiers, campaigns):
         self.app = app
         self.db = db
         self.tiers = tiers
+        self.campaigns = campaigns
 
         if app.monitoring:
             logging.info("[room] Orders monitoring enabled.")
@@ -258,19 +261,20 @@ class OrdersModel(Model):
         return self.db
 
     @coroutine
-    def __gather_order_info__(self, gamespace_id, store, component, item, item_method, db=None):
+    def __gather_order_info__(self, gamespace_id, store, component, item, db=None):
         try:
             data = yield (db or self.db).get(
                 """
                     SELECT *
-                    FROM `stores`, `items`, `store_components`
+                    FROM `stores`, `items`, `store_components`, `tiers`
                     WHERE `stores`.`store_name`=%s AND `stores`.`gamespace_id`=%s
                         AND `store_components`.`component`=%s
                         AND `items`.`item_name`=%s AND `items`.`gamespace_id`=`stores`.`gamespace_id`
                         AND `store_components`.`store_id`=`stores`.`store_id`
                         AND `store_components`.`gamespace_id`=`stores`.`gamespace_id`
-                        AND `items`.`store_id`=`stores`.`store_id` AND `items`.`item_method`=%s;
-                """, store, gamespace_id, component, item, item_method
+                        AND `items`.`store_id`=`stores`.`store_id`
+                        AND `tiers`.`tier_id`=`items`.`item_tier`;
+                """, store, gamespace_id, component, item
             )
         except DatabaseError as e:
             raise OrderError(500, "Failed to gather order info: " + e.args[1])
@@ -278,7 +282,7 @@ class OrdersModel(Model):
         if not data:
             raise NoOrderError()
 
-        raise Return(StoreComponentItemAdapter(data))
+        raise Return(StoreComponentItemTierAdapter(data))
 
     @coroutine
     @validate(gamespace_id="int", order_id="int")
@@ -322,7 +326,7 @@ class OrdersModel(Model):
         if not data:
             raise NoOrderError()
 
-        raise Return(StoreComponentItemAdapter(data))
+        raise Return(StoreComponentItemTierAdapter(data))
 
     @coroutine
     @validate(gamespace_id="int", order_id="int", status="str_name", info="json")
@@ -400,36 +404,51 @@ class OrdersModel(Model):
         return OrderQuery(gamespace, self.db, store_id)
 
     @coroutine
-    @validate(gamespace_id="int", account_id="int", store="str_name", component="str_name", item="str_name",
+    @validate(gamespace_id="int", account_id="int", store="str_name", component="str_name", item_name="str_name",
               currency="str_name", amount="int", env="json")
-    def new_order(self, gamespace_id, account_id, store, component, item, currency, amount, env):
+    def new_order(self, gamespace_id, account_id, store_name, component_name, item_name, currency, amount, env):
 
         if (not isinstance(amount, int)) or amount <= 0:
             raise OrderError(400, "Invalid amount")
 
-        if not StoreComponents.has_component(component):
+        if not StoreComponents.has_component(component_name):
             raise OrderError(404, "No such component")
 
         with (yield self.db.acquire()) as db:
             try:
-                data = yield self.__gather_order_info__(gamespace_id, store, component, item, "iap", db=db)
+                data = yield self.__gather_order_info__(gamespace_id, store_name, component_name, item_name, db=db)
             except NoOrderError:
                 raise OrderError(404, "Not found (either store, or currency, or component, or item, "
                                       "or item does not support such currency)")
 
+            item = data.item
+
+            if not item.enabled:
+                raise OrderError(410, "Order is disabled")
+
             store_id = data.store.store_id
-            item_id = data.item.item_id
+            item_id = item.item_id
             component_id = data.component.component_id
 
-            billing = IAPBillingMethod()
-            billing.load(data.item.method_data)
-
             try:
-                tier = yield self.tiers.find_tier(gamespace_id, store_id, billing.tier)
-            except TierError as e:
-                raise OrderError(500, e.message)
-            except TierNotFound:
-                raise OrderError(404, "Tier was not found")
+                campaign_entry = yield self.campaigns.find_current_campaign_item(gamespace_id, store_id, item_id)
+            except CampaignError:
+                tier = data.tier
+                campaign_id = None
+                campaign_item = None
+            else:
+                if campaign_entry is None:
+                    tier = data.tier
+                    campaign_id = None
+                    campaign_item = None
+                else:
+                    # if there's an ongoing campaign that affects current item, then
+                    # tier and certain item payload (public_data, private_data) should be updated
+                    # from that campaign instead
+                    tier = campaign_entry.tier
+                    campaign_item = campaign_entry.campaign_item
+                    campaign_id = campaign_item.campaign_id
+                    item.apply_campaign(campaign_item)
 
             if currency not in tier.prices:
                 raise OrderError(404, "No such currency for a tier")
@@ -443,20 +462,20 @@ class OrdersModel(Model):
                     """
                         INSERT INTO `orders`
                             (`gamespace_id`, `store_id`, `tier_id`, `item_id`, `account_id`,
-                             `component_id`, `order_amount`, `order_status`, `order_currency`, `order_total`)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                             `component_id`, `order_amount`, `order_status`, `order_currency`, 
+                             `order_total`, `order_campaign_id`)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, gamespace_id, store_id, tier_id, item_id, account_id, component_id,
-                    amount, OrdersModel.STATUS_NEW, currency, total
-                )
+                    amount, OrdersModel.STATUS_NEW, currency, total, campaign_id)
             except DatabaseError as e:
                 raise OrderError(500, "Failed to create new order: " + e.args[1])
 
-            component_instance = StoreComponents.component(component, data.component.data)
+            component_instance = StoreComponents.component(component_name, data.component.data)
 
             try:
                 info = yield component_instance.new_order(
-                    self.app, gamespace_id, account_id, order_id, currency,
-                    price, amount, total, data.store, data.item, env)
+                    self.app, gamespace_id, account_id, order_id, currency, price,
+                    amount, total, data.store, item, env, campaign_item)
 
             except StoreComponentError as e:
                 logging.exception("Failed to process new order: " + e.message)
@@ -516,15 +535,28 @@ class OrdersModel(Model):
 
             yield update_status(new_status, new_info)
 
+            item = order_info.item
+
+            if order.campaign_id:
+                try:
+                    campaign = yield self.campaigns.get_campaign_item(
+                        gamespace_id, order.campaign_id, order.item_id, db)
+                except CampaignItemNotFound:
+                    pass
+                except CampaignError:
+                    pass
+                else:
+                    item.apply_campaign(campaign)
+
             raise Return({
-                "item": order_info.item.name,
+                "item": item.name,
                 "amount": order.amount,
                 "currency": order.currency,
                 "store": order_info.store.name,
                 "total": order.total,
                 "order_id": to_int(order.order_id),
-                "public": order_info.item.public_data,
-                "private": order_info.item.private_data,
+                "public": item.public_data,
+                "private": item.private_data,
                 "info": order.info
             })
 
@@ -665,7 +697,7 @@ class OrdersModel(Model):
             except DatabaseError as e:
                 raise OrderError(500, "Failed to gather order info: " + e.args[1])
 
-            orders_info = map(StoreComponentItemAdapter, orders_data)
+            orders_info = map(StoreComponentItemTierAdapter, orders_data)
 
             update = []
 

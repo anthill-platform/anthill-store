@@ -10,11 +10,12 @@ import common
 from model.store import StoreError, StoreNotFound, StoreComponentNotFound
 from model.category import CategoryError, CategoryNotFound, CategoryModel
 from model.item import ItemError, ItemNotFound
-from model.billing import OfflineBillingMethod, IAPBillingMethod
 from model.tier import TierModel, TierError, TierNotFound, CurrencyError, CurrencyNotFound
 from model.order import OrderQueryError, OrdersModel
+from model.campaign import CampaignError, CampaignNotFound, CampaignItemNotFound
 
 import math
+import datetime
 
 
 class StoreAdminComponents(object):
@@ -125,32 +126,6 @@ class StoreComponentAdmin(object):
         self.component.bundle = bundle
 
 
-class BillingMethodAdmin(object):
-    def __init__(self, action, store_id, method_class):
-        self.action = action
-        self.store_id = store_id
-        self.method = method_class()
-
-    def dump(self):
-        return self.method.dump()
-
-    def get(self):
-        raise NotImplementedError()
-
-    @coroutine
-    def init(self):
-        pass
-
-    def load(self, data):
-        self.method.load(data)
-
-    def render(self):
-        raise NotImplementedError()
-
-    def update(self, **fields):
-        raise NotImplementedError()
-
-
 class CategoriesController(a.AdminController):
     @coroutine
     def get(self):
@@ -169,7 +144,7 @@ class CategoriesController(a.AdminController):
             a.links("Categories", [
                 a.link("category", item.name, icon="list-alt", category_id=item.category_id)
                 for item in data["items"]
-                ]),
+            ]),
             a.links("Navigate", [
                 a.link("index", "Go back", icon="chevron-left"),
                 a.link("new_category", "Create category", icon="plus"),
@@ -318,12 +293,12 @@ class CategoryController(a.AdminController):
 
 class ChooseCategoryController(a.AdminController):
     @coroutine
-    @validate(category="int", billing_method="str_name")
-    def apply(self, category, billing_method):
+    @validate(category="int")
+    def apply(self, category):
         raise a.Redirect(
             "new_item",
             store_id=self.context.get("store_id"),
-            category_id=category, billing_method=billing_method)
+            category_id=category)
 
     @coroutine
     @validate(store_id="int")
@@ -349,15 +324,10 @@ class ChooseCategoryController(a.AdminController):
                 a.link("store", data["store_name"], store_id=self.context.get("store_id")),
             ], "Choose category"),
             a.form(
-                title="Choose category and billing method",
+                title="Choose category",
                 fields={
                     "category": a.field(
                         "Select category", "select", "primary", values=data["categories"]
-                    ),
-                    "billing_method": a.field(
-                        "Billing method", "select", "primary", values={
-                            method: method for method in BillingMethods.methods()
-                        }
                     )
                 }, methods={
                     "apply": a.method("Proceed", "primary")
@@ -392,7 +362,7 @@ class CurrenciesController(a.AdminController):
                 a.link("currency", item.title + u"({0})".format(item.symbol),
                        icon="bitcoin", currency_id=item.currency_id)
                 for item in data["items"]
-                ]),
+            ]),
             a.links("Navigate", [
                 a.link("index", "Go back", icon="chevron-left"),
                 a.link("new_currency", "Create currency", icon="plus")
@@ -480,35 +450,6 @@ class CurrencyController(a.AdminController):
             "currency",
             message="Currency has been updated",
             currency_id=currency_id)
-
-
-class IAPBillingMethodAdmin(BillingMethodAdmin):
-    def __init__(self, action, store_id):
-        super(IAPBillingMethodAdmin, self).__init__(action, store_id, IAPBillingMethod)
-        self.items = []
-
-    def get(self):
-        return {
-            "tier": self.method.tier
-        }
-
-    @coroutine
-    def init(self):
-        self.items = yield self.action.application.tiers.list_tiers(self.action.gamespace, self.store_id)
-
-    def render(self):
-
-        tiers = {
-            item.name: item.name for item in self.items
-        }
-        tiers[""] = "Not selected yet"
-
-        return {
-            "tier": a.field("Tier", "select", "primary", "non-empty", values=tiers)
-        }
-
-    def update(self, tier, **ignored):
-        self.method.tier = tier
 
 
 class NewCategoryController(a.AdminController):
@@ -893,7 +834,7 @@ class NewStoreController(a.AdminController):
         stores = self.application.stores
 
         try:
-            store_id = yield stores.new_store(self.gamespace, store_name)
+            store_id = yield stores.new_store(self.gamespace, store_name, {})
         except StoreError as e:
             raise a.ActionError("Failed to create new store: " + e.args[0])
 
@@ -908,7 +849,7 @@ class NewStoreController(a.AdminController):
                 a.link("stores", "Stores")
             ], "New store"),
             a.form("New store", fields={
-                "store_name": a.field("Store unique ID", "text", "primary", "non-empty")
+                "store_name": a.field("Store unique ID", "text", "primary", "non-empty", order=1)
             }, methods={
                 "create": a.method("Create", "primary")
             }, data=data),
@@ -923,29 +864,35 @@ class NewStoreController(a.AdminController):
 
 class NewStoreItemController(a.AdminController):
     @coroutine
-    @validate(item_name="str_name", item_public_data="load_json", item_private_data="load_json")
-    def create(self, item_name, item_public_data, item_private_data, **method_data):
+    @validate(item_name="str_name", item_enabled="bool", tier_id="int",
+              item_public_data="load_json", item_private_data="load_json")
+    def create(self, item_name, item_public_data, item_private_data, item_tier, item_enabled=False, **method_data):
         items = self.application.items
-
-        billing_method = self.context.get("billing_method")
-
-        if not BillingMethods.has_method(billing_method):
-            raise a.ActionError("No such billing method")
+        stores = self.application.stores
+        tiers = self.application.tiers
 
         store_id = self.context.get("store_id")
         category_id = self.context.get("category_id")
 
-        method_instance = yield StoreItemController.get_method(billing_method, self, store_id)
-        method_instance.update(**method_data)
-        billing_data = method_instance.dump()
+        try:
+            yield stores.get_store(self.gamespace, store_id)
+        except StoreNotFound:
+            raise a.ActionError("No such store")
+
+        try:
+            tier = yield tiers.get_tier(self.gamespace, item_tier)
+        except TierNotFound:
+            raise a.ActionError("No such tier")
+        else:
+            if str(tier.store_id) != str(store_id):
+                raise a.ActionError("Bad tier")
 
         try:
             item_id = yield items.new_item(
                 self.gamespace, store_id, category_id, item_name,
-                item_public_data, item_private_data,
-                billing_method, billing_data)
-        except StoreError as e:
-            raise a.ActionError("Failed to create new item: " + e.args[0])
+                item_enabled, item_public_data, item_private_data, item_tier)
+        except ItemError as e:
+            raise a.ActionError(e.message)
 
         raise a.Redirect(
             "item",
@@ -953,15 +900,20 @@ class NewStoreItemController(a.AdminController):
             item_id=item_id)
 
     @coroutine
-    @validate(store_id="int", category_id="int", billing_method="str_name", clone="int")
-    def get(self, store_id, category_id, billing_method, clone=None):
+    @validate(store_id="int", category_id="int", clone="int")
+    def get(self, store_id, category_id, clone=None):
 
         stores = self.application.stores
         categories = self.application.categories
         items = self.application.items
+        tiers = self.application.tiers
 
-        if not BillingMethods.has_method(billing_method):
-            raise a.ActionError("No such billing method")
+        try:
+            yield stores.get_store(self.gamespace, store_id)
+        except StoreNotFound:
+            raise a.ActionError("No such store")
+
+        tiers_list = yield tiers.list_tiers(self.gamespace, store_id)
 
         if clone:
             try:
@@ -974,12 +926,14 @@ class NewStoreItemController(a.AdminController):
             item_name = item.name
             item_public_data = item.public_data
             item_private_data = item.private_data
-            item_method_data = item.method_data
+            item_tier = item.tier
+            item_enabled = item.enabled
         else:
             item_name = ""
             item_public_data = {}
             item_private_data = {}
-            item_method_data = {}
+            item_tier = 0
+            item_enabled = True
 
         try:
             store = yield stores.get_store(self.gamespace, store_id)
@@ -1006,44 +960,45 @@ class NewStoreItemController(a.AdminController):
         common.update(public_item_scheme, common_public_item_scheme)
         common.update(private_item_scheme, common_private_item_scheme)
 
-        method_instance = yield StoreItemController.get_method(billing_method, self, store_id)
-        method_instance.load(item_method_data)
-
         data = {
             "category_name": category.name,
             "store_name": store.name,
             "public_item_scheme": public_item_scheme,
             "private_item_scheme": private_item_scheme,
-            "billing_fields": method_instance.render(),
+            "item_tier": item_tier,
+            "tiers_list": {tier.tier_id: u"{0} ({1})".format(tier.title, tier.name) for tier in tiers_list},
             "item_name": item_name,
             "item_public_data": item_public_data,
             "item_private_data": item_private_data,
+            "item_enabled": "true" if item_enabled else "false"
         }
-
-        data.update(method_instance.get())
 
         raise a.Return(data)
 
     def render(self, data):
-
-        fields = {
-            "item_name": a.field("Item unique name", "text", "primary", "non-empty", order=1),
-            "item_public_data": a.field(
-                "Public item properties (available to everyone)", "dorn", "primary",
-                schema=data["public_item_scheme"], order=2),
-            "item_private_data": a.field(
-                "Private item properties (available only as a response to successful purchase)", "dorn", "primary",
-                schema=data["private_item_scheme"], order=3),
-        }
-
-        fields.update(data["billing_fields"])
-
         return [
             a.breadcrumbs([
                 a.link("stores", "Stores"),
                 a.link("store", data["store_name"], store_id=self.context.get("store_id"))
             ], "Add new item to store"),
-            a.form("New item (of category '{0}')".format(data["category_name"]), fields=fields, methods={
+            a.form("New item (of category '{0}')".format(data["category_name"]), fields={
+                "item_name": a.field(
+                    "Item Unique Name", "text", "primary", "non-empty",
+                    order=1, description="Item unique name per store for internal purposes"),
+                "item_tier": a.field(
+                    "Item Price Tier", "select", "primary",
+                    values=data["tiers_list"], order=2),
+                "item_enabled": a.field(
+                    "Is Item Enabled?", "switch", "primary",
+                    order=3, description="Only enabled items will be sent to the users"),
+                "item_public_data": a.field(
+                    "Public Item Properties", "dorn", "primary",
+                    schema=data["public_item_scheme"], order=4, description="Available to everyone"),
+                "item_private_data": a.field(
+                    "Private Item Properties", "dorn", "primary",
+                    schema=data["private_item_scheme"], order=5,
+                    description="Available only as a response to successful purchase")
+            }, methods={
                 "create": a.method("Clone" if self.context.get("clone") else "Create", "primary")
             }, data=data),
             a.links("Navigate", [
@@ -1058,14 +1013,14 @@ class NewStoreItemController(a.AdminController):
 
 class NewStoreTierController(a.AdminController):
     @coroutine
-    @validate(tier_name="str_name", tier_product="str", tier_prices="load_json_dict_of_ints")
-    def create(self, tier_name, tier_product, tier_prices):
+    @validate(tier_name="str_name", tier_title="str", tier_product="str", tier_prices="load_json_dict_of_ints")
+    def create(self, tier_name, tier_title, tier_product, tier_prices):
 
         tiers = self.application.tiers
         store_id = self.context.get("store_id")
 
         try:
-            tier_id = yield tiers.new_tier(self.gamespace, store_id, tier_name, tier_product, tier_prices)
+            tier_id = yield tiers.new_tier(self.gamespace, store_id, tier_name, tier_title, tier_product, tier_prices)
         except StoreError as e:
             raise a.ActionError("Failed to create new tier: " + e.args[0])
 
@@ -1100,11 +1055,19 @@ class NewStoreTierController(a.AdminController):
                 a.link("tiers", "Tiers", store_id=self.context.get("store_id"))
             ], "Add new tier to store"),
             a.form("New tier", fields={
-                "tier_name": a.field("Tier unique name", "text", "primary", "non-empty"),
-                "tier_product": a.field("Product ID", "text", "primary", "non-empty"),
+                "tier_name": a.field(
+                    "Tier unique name", "text", "primary", "non-empty",
+                    order=1, description="Unique name per store, for internal purposes"),
+                "tier_title": a.field(
+                    "Tier title", "text", "primary", "non-empty",
+                    order=2, description="A short description for usage ease, for example, \"$0.99\""),
+                "tier_product": a.field(
+                    "Product ID", "text", "primary", "non-empty",
+                    order=3),
                 "tier_prices": a.field(
                     "Tier prices (in cents)", "kv", "primary",
-                    values={curr.name: curr.title for curr in data["currencies"]}
+                    values={curr.name: curr.title for curr in data["currencies"]},
+                    order=4
                 )
             }, methods={
                 "create": a.method("Create", "primary")
@@ -1117,34 +1080,6 @@ class NewStoreTierController(a.AdminController):
 
     def access_scopes(self):
         return ["store_admin"]
-
-
-class OfflineBillingMethodAdmin(BillingMethodAdmin):
-    def __init__(self, action, store_id):
-        super(OfflineBillingMethodAdmin, self).__init__(action, store_id, OfflineBillingMethod)
-        self.currencies = []
-
-    def get(self):
-        return {
-            "currency": self.method.currency,
-            "amount": self.method.amount
-        }
-
-    @coroutine
-    def init(self):
-        self.currencies = yield self.action.application.currencies.list_currencies(self.action.gamespace)
-
-    def render(self):
-        return {
-            "currency": a.field("Currency", "select", "primary", "non-empty", values={
-                currency.name: currency.title for currency in self.currencies
-            }, order=20),
-            "amount": a.field("Price (in currency)", "text", "primary", "number", order=21)
-        }
-
-    def update(self, currency, amount, **ignored):
-        self.method.currency = currency
-        self.method.amount = amount
 
 
 class RootAdminController(a.AdminController):
@@ -1183,23 +1118,6 @@ class StoreController(a.AdminController):
 
         raise a.Return(result)
 
-    @coroutine
-    def publish(self):
-        stores = self.application.stores
-        store_id = self.context.get("store_id")
-
-        try:
-            yield stores.get_store(self.gamespace, store_id)
-        except StoreNotFound:
-            raise a.ActionError("No such store")
-
-        yield stores.publish_store(self.gamespace, store_id)
-
-        raise a.Redirect(
-            "store",
-            message="Store has been published",
-            store_id=store_id)
-
     def render(self, data):
         return [
             a.breadcrumbs([
@@ -1211,6 +1129,10 @@ class StoreController(a.AdminController):
                     "title": "Name"
                 },
                 {
+                    "id": "enabled",
+                    "title": "Enabled"
+                },
+                {
                     "id": "title",
                     "title": "Title"
                 },
@@ -1219,8 +1141,8 @@ class StoreController(a.AdminController):
                     "title": "Category"
                 },
                 {
-                    "id": "method",
-                    "title": "Billing method"
+                    "id": "tier",
+                    "title": "Tier"
                 },
                 {
                     "id": "actions",
@@ -1228,20 +1150,28 @@ class StoreController(a.AdminController):
                 }
             ], [
                 {
-                    "name": [a.link("item", item.name, icon="shopping-bag", item_id=item.item_id)],
-                    "category": item.category.name,
-                    "method": item.method,
-                    "title": item.title("EN"),
-                    "actions": [a.button("item", "Delete", "danger", _method="delete", item_id=item.item_id)]
-                } for item in data["items"]], "default"),
+                    "name": [a.link("item", entry.item.name, icon="shopping-bag", item_id=entry.item.item_id)],
+                    "category": [
+                    a.link(
+                        "category", entry.category.name,
+                        icon="list-alt", category_id=entry.category.category_id)
+                    ],
+                    "tier": [a.link("tier", entry.tier.title, tier_id=entry.tier.tier_id)],
+                    "title": entry.item.title("EN"),
+                    "enabled": [
+                        a.status("Yes" if entry.item.enabled else "No",
+                                 "success" if entry.item.enabled else "danger")
+                    ],
+                    "actions": [a.button("item", "Delete", "danger", _method="delete", item_id=entry.item.item_id)]
+                }
+                for entry in data["items"]
+            ], "default"),
 
-            a.form("Publish store", fields={}, methods={
-                "publish": a.method("Publish this store", "success")
-            }, data=data),
             a.links("Navigate", [
                 a.link("stores", "Go back", icon="chevron-left"),
                 a.link("tiers", "Edit tiers", icon="diamond", store_id=self.context.get("store_id")),
                 a.link("orders", "Orders", icon="money", store_id=self.context.get("store_id")),
+                a.link("campaigns", "Campaigns", icon="percent", store_id=self.context.get("store_id")),
                 a.link("store_settings", "Store settings", icon="cog", store_id=self.context.get("store_id")),
                 a.link("choose_category", "Add new item", icon="plus", store_id=self.context.get("store_id")),
             ])
@@ -1282,6 +1212,7 @@ class StoreItemController(a.AdminController):
         stores = self.application.stores
         items = self.application.items
         categories = self.application.categories
+        tiers = self.application.tiers
 
         try:
             item = yield items.get_item(self.gamespace, item_id)
@@ -1295,6 +1226,8 @@ class StoreItemController(a.AdminController):
             store = yield stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
+
+        tiers_list = yield tiers.list_tiers(self.gamespace, store_id)
 
         try:
             category = yield categories.get_category(self.gamespace, category_id)
@@ -1316,12 +1249,6 @@ class StoreItemController(a.AdminController):
         common.update(public_item_scheme, common_public_item_scheme)
         common.update(private_item_scheme, common_private_item_scheme)
 
-        item_method = item.method
-
-        item_method_data = item.method_data
-        method_instance = yield StoreItemController.get_method(item_method, self, store_id)
-        method_instance.load(item_method_data)
-
         raise a.Return({
             "category_name": category.name,
             "category_id": category_id,
@@ -1329,25 +1256,13 @@ class StoreItemController(a.AdminController):
             "public_item_scheme": public_item_scheme,
             "private_item_scheme": private_item_scheme,
             "item_name": item.name,
+            "item_enabled": "true" if item.enabled else "false",
             "item_public_data": item.public_data,
             "item_private_data": item.private_data,
-            "billing_method": item_method,
-            "store_id": store_id,
-            "billing_fields": method_instance.render(),
-            "billing_data": method_instance.get()
+            "tiers_list": {tier.tier_id: u"{0} ({1})".format(tier.title, tier.name) for tier in tiers_list},
+            "item_tier": item.tier,
+            "store_id": store_id
         })
-
-    @staticmethod
-    @coroutine
-    def get_method(item_method, action, store_id):
-        try:
-            method_instance = BillingMethods.method(item_method, action, store_id)
-        except KeyError:
-            raise a.ActionError("No such billing method")
-
-        yield method_instance.init()
-
-        raise a.Return(method_instance)
 
     def render(self, data):
 
@@ -1357,28 +1272,33 @@ class StoreItemController(a.AdminController):
                 a.link("store", data["store_name"], store_id=data.get("store_id"))
             ], data["item_name"]),
             a.form("Store item (of category '{0}')".format(data["category_name"]), fields={
-                "item_name": a.field("Item unique name", "text", "primary", "non-empty", order=1),
+                "item_name": a.field(
+                    "Item Unique Name", "text", "primary", "non-empty",
+                    order=1, description="Item unique name per store for internal purposes"),
+                "item_tier": a.field(
+                    "Item Price Tier", "select", "primary",
+                    values=data["tiers_list"], order=2),
+                "item_enabled": a.field(
+                    "Is Item Enabled?", "switch", "primary",
+                    order=3, description="Only enabled items will be sent to the users"),
                 "item_public_data": a.field(
-                    "Public item properties (available to everyone)", "dorn", "primary",
-                    schema=data["public_item_scheme"], order=2),
+                    "Public Item Properties", "dorn", "primary",
+                    schema=data["public_item_scheme"], order=4, description="Available to everyone"),
                 "item_private_data": a.field(
-                    "Private item properties (available only as a response to successful purchase)", "dorn", "primary",
-                    schema=data["private_item_scheme"], order=3)
+                    "Private Item Properties", "dorn", "primary",
+                    schema=data["private_item_scheme"], order=5,
+                    description="Available only as a response to successful purchase")
             }, methods={
                 "update": a.method("Update", "primary"),
                 "delete": a.method("Delete this item", "danger"),
             }, data=data),
-            a.form("Billing '{0}' (source of the purchase)".format(data["billing_method"]),
-                   fields=data["billing_fields"],
-                   methods={"update_billing": a.method("Update", "primary")}, data=data["billing_data"]),
             a.links("Navigate", [
                 a.link("store", "Go back", icon="chevron-left", store_id=data.get("store_id")),
                 a.link("new_item", "Clone this item",
                        icon="clone",
                        store_id=data.get("store_id"),
                        clone=self.context.get("item_id"),
-                       category_id=data.get("category_id"),
-                       billing_method=data.get("billing_method")),
+                       category_id=data.get("category_id")),
                 a.link("category", "Edit category scheme", icon="list-alt", category_id=data.get("category_id"))
             ])
         ]
@@ -1388,25 +1308,11 @@ class StoreItemController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    @validate(item_name="str_name", item_public_data="load_json", item_private_data="load_json")
-    def update(self, item_name, item_public_data, item_private_data, **ignored):
+    @validate(item_name="str_name", item_enabled="bool", item_public_data="load_json",
+              item_private_data="load_json", item_tier="int")
+    def update(self, item_name, item_public_data, item_private_data, item_tier, item_enabled=False, **ignored):
         items = self.application.items
-
-        item_id = self.context.get("item_id")
-
-        try:
-            yield items.update_item(self.gamespace, item_id, item_name, item_public_data, item_private_data)
-        except ItemError as e:
-            raise a.ActionError("Failed to update item: " + e.args[0])
-
-        raise a.Redirect(
-            "item",
-            message="Item has been updated",
-            item_id=item_id)
-
-    @coroutine
-    def update_billing(self, **data):
-        items = self.application.items
+        tiers = self.application.tiers
 
         item_id = self.context.get("item_id")
 
@@ -1415,17 +1321,18 @@ class StoreItemController(a.AdminController):
         except ItemNotFound:
             raise a.ActionError("No such item")
 
-        store_id = item.store_id
-        item_method = item.method
-        item_method_data = item.method_data
-
-        method_instance = yield StoreItemController.get_method(item_method, self, store_id)
-        method_instance.load(item_method_data)
-        method_instance.update(**data)
-        billing_data = method_instance.dump()
+        try:
+            tier = yield tiers.get_tier(self.gamespace, item_tier)
+        except TierNotFound:
+            raise a.ActionError("No such tier")
+        else:
+            if str(tier.store_id) != str(item.store_id):
+                raise a.ActionError("Bad tier")
 
         try:
-            yield items.update_item_billing(self.gamespace, item_id, billing_data)
+            yield items.update_item(self.gamespace, item_id,
+                                    item_name, item_enabled, item_public_data,
+                                    item_private_data, item_tier)
         except ItemError as e:
             raise a.ActionError("Failed to update item: " + e.args[0])
 
@@ -1546,6 +1453,7 @@ class StoreTierController(a.AdminController):
             "currencies": (yield currencies.list_currencies(self.gamespace)),
             "tier_prices": tier.prices,
             "tier_name": tier.name,
+            "tier_title": tier.title,
             "tier_product": tier.product,
             "components": components
         })
@@ -1569,11 +1477,19 @@ class StoreTierController(a.AdminController):
                 a.link("tiers", "Tiers", store_id=data["store_id"])
             ], data["tier_name"]),
             a.form("Edit tier", fields={
-                "tier_name": a.field("Tier unique name", "text", "primary", "non-empty"),
-                "tier_product": a.field("Product ID", "text", "primary", "non-empty"),
+                "tier_name": a.field(
+                    "Tier unique name", "text", "primary", "non-empty",
+                    order=1, description="Unique name per store, for internal purposes"),
+                "tier_title": a.field(
+                    "Tier title", "text", "primary", "non-empty",
+                    order=2, description="A short description for usage ease, for example, \"$0.99\""),
+                "tier_product": a.field(
+                    "Product ID", "text", "primary", "non-empty",
+                    order=3),
                 "tier_prices": a.field(
                     "Tier prices (in cents)", "kv", "primary",
-                    values={curr.name: curr.title for curr in data["currencies"]}
+                    values={curr.name: curr.title for curr in data["currencies"]},
+                    order=4
                 )
             }, methods={
                 "update": a.method("Update tier", "primary"),
@@ -1602,20 +1518,20 @@ class StoreTierController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    @validate(tier_name="str_name", tier_product="str", tier_prices="load_json_dict_of_ints")
-    def update(self, tier_name, tier_product, tier_prices):
+    @validate(tier_name="str_name", tier_title="str", tier_product="str", tier_prices="load_json_dict_of_ints")
+    def update(self, tier_name, tier_title, tier_product, tier_prices):
 
         tiers = self.application.tiers
         tier_id = self.context.get("tier_id")
 
         try:
-            yield tiers.update_tier(self.gamespace, tier_id, tier_name, tier_product, tier_prices)
+            yield tiers.update_tier(self.gamespace, tier_id, tier_name, tier_title, tier_product, tier_prices)
         except StoreError as e:
             raise a.ActionError("Failed to update tier: " + e.args[0])
 
         raise a.Redirect(
             "tier",
-            message="Component has been updated",
+            message="Tier has been updated",
             tier_id=tier_id)
 
 
@@ -1653,6 +1569,10 @@ class StoreTiersController(a.AdminController):
                     "title": "Name"
                 },
                 {
+                    "id": "title",
+                    "title": "Title"
+                },
+                {
                     "id": "product",
                     "title": "Product ID"
                 },
@@ -1662,6 +1582,7 @@ class StoreTiersController(a.AdminController):
                 }
             ], [{"name": [a.link("tier", str(tier.name), icon="diamond", tier_id=tier.tier_id)],
                  "product": tier.product,
+                 "title": tier.title,
                  "actions": [a.button("tier", "Delete", "danger", _method="delete", tier_id=tier.tier_id)]
                  } for tier in data["tiers"]
                 ], "default"),
@@ -1766,7 +1687,8 @@ class StoreSettingsController(a.AdminController):
 
         raise a.Return({
             "store_name": store.name,
-            "store_components": components
+            "store_components": components,
+            "store_campaign_scheme": store.campaign_scheme or {}
         })
 
     @coroutine
@@ -1811,7 +1733,9 @@ class StoreSettingsController(a.AdminController):
 
         result.extend([
             a.form("Store info", fields={
-                "store_name": a.field("Store unique ID", "text", "primary", "non-empty", order=1)
+                "store_name": a.field("Store unique ID", "text", "primary", "non-empty", order=1),
+                "store_campaign_scheme": a.field("Store Campaign Scheme", "json", "primary", "non-empty",
+                                                 order=2, height=300)
             }, methods={
                 "update": a.method("Update", "primary")
             }, data=data),
@@ -1833,14 +1757,14 @@ class StoreSettingsController(a.AdminController):
         return ["store_admin"]
 
     @coroutine
-    @validate(store_name="str_name")
-    def update(self, store_name):
+    @validate(store_name="str_name", store_campaign_scheme="load_json_dict")
+    def update(self, store_name, store_campaign_scheme):
 
         store_id = self.context.get("store_id")
         stores = self.application.stores
 
         try:
-            yield stores.update_store(self.gamespace, store_id, store_name)
+            yield stores.update_store(self.gamespace, store_id, store_name, store_campaign_scheme)
         except StoreError as e:
             raise a.ActionError("Failed to update store: " + e.args[0])
 
@@ -1867,7 +1791,7 @@ class StoresController(a.AdminController):
             a.links("Stores", [
                 a.link("store", item.name, icon="shopping-bag", store_id=item.store_id)
                 for item in data["stores"]
-                ]),
+            ]),
             a.links("Navigate", [
                 a.link("index", "Go back", icon="chevron-left"),
                 a.link("new_store", "Create a new store", icon="plus")
@@ -1879,7 +1803,6 @@ class StoresController(a.AdminController):
 
 
 class OrdersController(a.AdminController):
-
     ORDERS_PER_PAGE = 20
 
     def render(self, data):
@@ -1896,6 +1819,9 @@ class OrdersController(a.AdminController):
                 ],
                 "account": order.order.account_id,
                 "amount": order.order.amount,
+                "campaign": [
+                    a.link("campaign", str(order.order.campaign_id), icon="percent", campaign_id=order.order.campaign_id)
+                ] if order.order.campaign_id else "No",
                 "total": str(order.order.total / 100) + " " + str(order.order.currency),
                 "status": [
                     {
@@ -1941,6 +1867,9 @@ class OrdersController(a.AdminController):
                 }, {
                     "id": "total",
                     "title": "Total"
+                }, {
+                    "id": "campaign",
+                    "title": "Campaign"
                 }, {
                     "id": "status",
                     "title": "Status"
@@ -2051,8 +1980,8 @@ class OrdersController(a.AdminController):
         pages = int(math.ceil(float(count) / float(OrdersController.ORDERS_PER_PAGE)))
 
         store_items = {
-            item.item_id: item.name
-            for item in store_items
+            entry.item.item_id: entry.item.name
+            for entry in store_items
         }
         store_items["0"] = "Any"
 
@@ -2092,23 +2021,867 @@ class OrdersController(a.AdminController):
         })
 
 
-class BillingMethods(object):
-    METHODS = {
-        "offline": OfflineBillingMethodAdmin,
-        "iap": IAPBillingMethodAdmin
-    }
+class StoreCampaignsController(a.AdminController):
 
-    @staticmethod
-    def has_method(method_name):
-        return method_name in BillingMethods.METHODS
+    CAMPAIGNS_PER_PAGE = 20
 
-    @staticmethod
-    def method(method_name, action, store_id):
-        return BillingMethods.METHODS[method_name](action, store_id)
+    @coroutine
+    @validate(store_id="int")
+    def get(self, store_id, page=1):
 
-    @staticmethod
-    def methods():
-        return BillingMethods.METHODS.keys()
+        stores = self.application.stores
+        campaigns = self.application.campaigns
+
+        offset = (int(page) - 1) * StoreCampaignsController.CAMPAIGNS_PER_PAGE
+        limit = StoreCampaignsController.CAMPAIGNS_PER_PAGE
+
+        try:
+            store = yield stores.get_store(self.gamespace, store_id)
+        except StoreNotFound:
+            raise a.ActionError("No such store")
+
+        campaigns_list, count = yield campaigns.list_campaigns_count(self.gamespace, store_id, offset=offset, limit=limit)
+
+        pages = int(math.ceil(float(count) / float(StoreCampaignsController.CAMPAIGNS_PER_PAGE)))
+
+        result = {
+            "campaigns": campaigns_list,
+            "store_name": store.name,
+            "pages": pages
+        }
+
+        raise a.Return(result)
+
+    def render(self, data):
+        return [
+            a.breadcrumbs([
+                a.link("stores", "Stores"),
+                a.link("store", data["store_name"], store_id=self.context.get("store_id")),
+            ], "Campaigns"),
+            a.content("Campaigns", [
+                {
+                    "id": "id",
+                    "title": "ID"
+                },
+                {
+                    "id": "name",
+                    "title": "Name"
+                },
+                {
+                    "id": "enabled",
+                    "title": "Enabled"
+                },
+                {
+                    "id": "dates",
+                    "title": "Dates"
+                },
+                {
+                    "id": "actions",
+                    "title": "Actions"
+                }
+            ], [
+                  {
+                      "id": [a.link("campaign", str(campaign.campaign_id), icon="percent",
+                                    campaign_id=campaign.campaign_id)],
+                      "name": campaign.name,
+                      "dates": "{0} - {1}".format(str(campaign.time_start), str(campaign.time_end)),
+                      "enabled": [
+                          a.status("Yes" if campaign.enabled else "No",
+                                   "success" if campaign.enabled else "danger")
+                      ],
+                      "actions": [a.button("campaign", "Delete", "danger", _method="delete",
+                                           campaign_id=campaign.campaign_id)]
+                  } for campaign in data["campaigns"]
+            ], "default", empty="No campaigns"),
+            a.pages(data["pages"]),
+
+            a.links("Navigate", [
+                a.link("store", "Go back", icon="chevron-left", store_id=self.context.get("store_id")),
+                a.link("new_campaign", "New Campaign", icon="plus", store_id=self.context.get("store_id"))
+            ])
+        ]
+
+    def access_scopes(self):
+        return ["store_admin"]
+
+
+class NewStoreCampaignController(a.AdminController):
+    @coroutine
+    @validate(campaign_name="str", campaign_enabled="bool", campaign_time_start="datetime",
+              campaign_time_end="datetime", campaign_data="load_json_dict", clone_campaign_items="bool")
+    def create(self, campaign_name, campaign_data, campaign_time_start,
+               campaign_time_end, campaign_enabled=False, clone_campaign_items=False, **ignored):
+        stores = self.application.stores
+        campaigns = self.application.campaigns
+
+        store_id = self.context.get("store_id")
+
+        try:
+            yield stores.get_store(self.gamespace, store_id)
+        except StoreNotFound:
+            raise a.ActionError("No such store")
+
+        try:
+            campaign_id = yield campaigns.new_campaign(
+                self.gamespace, store_id, campaign_name, campaign_time_start, campaign_time_end,
+                campaign_data, campaign_enabled)
+        except ItemError as e:
+            raise a.ActionError(e.message)
+
+        clone = self.context.get("clone")
+
+        if clone_campaign_items and clone:
+            try:
+                yield campaigns.clone_campaign_items(self.gamespace, clone, campaign_id)
+            except CampaignError:
+                pass
+
+        raise a.Redirect(
+            "campaign",
+            message="New campaign has been created",
+            campaign_id=campaign_id)
+
+    @coroutine
+    @validate(store_id="int", clone="int")
+    def get(self, store_id, clone=None):
+
+        stores = self.application.stores
+        campaigns = self.application.campaigns
+
+        try:
+            store = yield stores.get_store(self.gamespace, store_id)
+        except StoreNotFound:
+            raise a.ActionError("No such store")
+
+        if clone:
+            try:
+                campaign = yield campaigns.get_campaign(self.gamespace, clone)
+            except CampaignNotFound:
+                raise a.ActionError("No campaign to clone from")
+            except CampaignError as e:
+                raise a.ActionError("Failed to clone campaign: " + e.message)
+
+            if str(campaign.store_id) != str(store_id):
+                raise a.ActionError("Cannot clone a campaign from different store")
+
+            campaign_name = campaign.name
+            campaign_data = campaign.data
+            campaign_enabled = campaign.enabled
+            campaign_time_start = campaign.time_start
+            campaign_time_end = campaign.time_end
+        else:
+            campaign_name = ""
+            campaign_data = {}
+            campaign_enabled = True
+            campaign_time_start = datetime.datetime.utcnow()
+            campaign_time_end = datetime.datetime.utcnow()
+
+        campaign_scheme = store.campaign_scheme or {}
+
+        data = {
+            "clone": bool(clone),
+            "store_name": store.name,
+            "campaign_name": campaign_name,
+            "campaign_data": campaign_data,
+            "campaign_time_start": str(campaign_time_start),
+            "campaign_time_end": str(campaign_time_end),
+            "campaign_scheme": campaign_scheme,
+            "campaign_enabled": "true" if campaign_enabled else "false",
+            "clone_campaign_items": "true"
+        }
+
+        raise a.Return(data)
+
+    def render(self, data):
+
+        fields = {
+            "campaign_name": a.field(
+                "Campaign Name", "text", "primary", "non-empty",
+                order=1, description="Used to identify the campaign in the admin tool, "
+                                     "this name is not sent to the users."),
+            "campaign_enabled": a.field(
+                "Is Campaign Enabled?", "switch", "primary",
+                order=2, description="Only enabled campaigns will be active."),
+            "campaign_data": a.field(
+                "Campaign Custom Payload", "dorn", "primary",
+                schema=data["campaign_scheme"], order=4),
+            "campaign_time_start": a.field("Start date", "date", "primary", "non-empty", order=5),
+            "campaign_time_end": a.field("End date", "date", "primary", "non-empty", order=6)
+        }
+
+        if data["clone"]:
+            fields["clone_campaign_items"] = a.field(
+                "Clone campaign items?", "switch", "primary",
+                order=3, description=u"Copy the items from the "
+                                     u"campaign <b>{0}</b> to the new one".format(data["campaign_name"]))
+
+        return [
+            a.breadcrumbs([
+                a.link("stores", "Stores"),
+                a.link("store", data["store_name"], store_id=self.context.get("store_id")),
+                a.link("campaigns", "Campaigns", store_id=self.context.get("store_id")),
+            ], "New campaign"),
+            a.form("New campaign", fields=fields, methods={
+                "create": a.method("Clone" if self.context.get("clone") else "Create", "primary")
+            }, data=data),
+            a.links("Navigate", [
+                a.link("campaigns", "Go back", icon="chevron-left", store_id=self.context.get("store_id")),
+                a.link("store_settings", "Edit Custom Payload Scheme", icon="list-alt",
+                       store_id=self.context.get("store_id"))
+            ])
+        ]
+
+    def access_scopes(self):
+        return ["store_admin"]
+
+
+class StoreCampaignController(a.AdminController):
+    @coroutine
+    @validate(campaign_name="str", campaign_enabled="bool", campaign_time_start="datetime",
+              campaign_time_end="datetime", campaign_data="load_json_dict")
+    def update(self, campaign_name, campaign_data, campaign_time_start,
+               campaign_time_end, campaign_enabled=False, **ignored):
+
+        campaigns = self.application.campaigns
+        campaign_id = self.context.get("campaign_id")
+
+        try:
+            updated = yield campaigns.update_campaign(
+                self.gamespace, campaign_id, campaign_name, campaign_time_start, campaign_time_end,
+                campaign_data, campaign_enabled)
+        except ItemError as e:
+            raise a.ActionError(e.message)
+
+        raise a.Redirect(
+            "campaign",
+            message="Campaign has been updated" if updated else "Nothing to update",
+            campaign_id=campaign_id)
+
+    @coroutine
+    def delete(self, **ignored):
+
+        campaigns = self.application.campaigns
+        campaign_id = self.context.get("campaign_id")
+
+        try:
+            campaign = yield campaigns.get_campaign(self.gamespace, campaign_id)
+        except CampaignNotFound:
+            raise a.ActionError("No such campaign")
+        except CampaignError as e:
+            raise a.ActionError("Failed to get campaign: " + e.message)
+
+        try:
+            deleted = yield campaigns.delete_campaign(
+                self.gamespace, campaign_id)
+        except ItemError as e:
+            raise a.ActionError(e.message)
+
+        raise a.Redirect(
+            "campaigns",
+            message="Campaign has been deleted" if deleted else "Nothing to delete",
+            store_id=campaign.store_id)
+
+    @coroutine
+    @validate(campaign_id="int")
+    def get(self, campaign_id):
+
+        stores = self.application.stores
+        campaigns = self.application.campaigns
+
+        try:
+            campaign = yield campaigns.get_campaign(self.gamespace, campaign_id)
+        except CampaignNotFound:
+            raise a.ActionError("No such campaign")
+        except CampaignError as e:
+            raise a.ActionError("Failed to get campaign: " + e.message)
+
+        try:
+            store = yield stores.get_store(self.gamespace, campaign.store_id)
+        except StoreNotFound:
+            raise a.ActionError("No such store")
+
+        try:
+            campaign_items = yield campaigns.list_campaign_items(self.gamespace, campaign_id)
+        except CampaignError as e:
+            raise a.ActionError(e.message)
+
+        data = {
+            "store_name": store.name,
+            "store_id": campaign.store_id,
+            "campaign_name": campaign.name,
+            "campaign_data": campaign.data,
+            "campaign_time_start": str(campaign.time_start),
+            "campaign_time_end": str(campaign.time_end),
+            "campaign_items": campaign_items,
+            "campaign_scheme": store.campaign_scheme or {},
+            "campaign_enabled": "true" if campaign.enabled else "false"
+        }
+
+        raise a.Return(data)
+
+    def render(self, data):
+        return [
+            a.breadcrumbs([
+                a.link("stores", "Stores"),
+                a.link("store", data["store_name"], store_id=data["store_id"]),
+                a.link("campaigns", "Campaigns", store_id=data["store_id"]),
+            ], data["campaign_name"]),
+            a.content("Campaign Items", [
+                {
+                    "id": "name",
+                    "title": "Name"
+                },
+                {
+                    "id": "original_tier",
+                    "title": "Original Tier"
+                },
+                {
+                    "id": "updated_tier",
+                    "title": "Updated Tier"
+                },
+                {
+                    "id": "updated_public",
+                    "title": "Public Item Properties Diff"
+                },
+                {
+                    "id": "updated_private",
+                    "title": "Private Item Properties Diff"
+                },
+                {
+                    "id": "actions",
+                    "title": "Actions"
+                }
+            ], [
+                  {
+                      "name": [a.link("campaign_item", str(entry.item.name), icon="shopping-bag",
+                                      item_id=entry.item.item_id, campaign_id=self.context.get("campaign_id"))],
+                      "original_tier": [a.link("tier", str(entry.tier.title), tier_id=entry.tier.tier_id)],
+                      "updated_tier": [a.link("tier", str(entry.campaign_tier_title), tier_id=entry.campaign_tier_id)],
+                      "updated_public": [
+                        a.json_view({
+                            "updated": entry.campaign_item.public_data,
+                            "old": entry.item.public_data
+                        })
+                      ], "updated_private": [
+                        a.json_view({
+                            "updated": entry.campaign_item.private_data,
+                            "old": entry.item.private_data
+                        })
+                      ],
+                      "actions": [a.button("campaign_item", "Remove", "danger", _method="remove",
+                                           campaign_id=self.context.get("campaign_id"), item_id=entry.item.item_id)]
+                  } for entry in data["campaign_items"]
+            ], "default", empty="No campaign items so far"),
+            a.links("Actions", [
+                a.link("new_campaign_item_select", "Add an item into the campaign", icon="plus",
+                       campaign_id=self.context.get("campaign_id"))
+            ]),
+            a.form("Campaign", fields={
+                "campaign_name": a.field(
+                    "Campaign Name", "text", "primary", "non-empty",
+                    order=1, description="Used to identify the campaign in the admin tool, "
+                                         "this name is not sent to the users."),
+                "campaign_enabled": a.field(
+                    "Is Campaign Enabled?", "switch", "primary",
+                    order=2, description="Only enabled campaigns will be active."),
+                "campaign_data": a.field(
+                    "Campaign Custom Payload", "dorn", "primary",
+                    schema=data["campaign_scheme"], order=3),
+                "campaign_time_start": a.field("Start date", "date", "primary", "non-empty", order=4),
+                "campaign_time_end": a.field("End date", "date", "primary", "non-empty", order=5)
+            }, methods={
+                "update": a.method("Update", "primary"),
+                "delete": a.method("Delete", "danger"),
+            }, data=data),
+            a.links("Navigate", [
+                a.link("campaigns", "Go back", icon="chevron-left", store_id=data["store_id"]),
+                a.link("store_settings", "Edit Custom Payload Scheme", icon="list-alt", store_id=data["store_id"]),
+                a.link("new_campaign", "Clone Campaign", icon="clone",
+                       clone=self.context.get("campaign_id"),
+                       store_id=data["store_id"])
+            ])
+        ]
+
+    def access_scopes(self):
+        return ["store_admin"]
+
+
+class NewCampaignItemSelectController(a.AdminController):
+    @coroutine
+    @validate(campaign_id="int")
+    def get(self, campaign_id):
+
+        stores = self.application.stores
+        items = self.application.items
+        campaigns = self.application.campaigns
+
+        try:
+            campaign = yield campaigns.get_campaign(self.gamespace, campaign_id)
+        except CampaignNotFound:
+            raise a.ActionError("No such campaign")
+        except CampaignError as e:
+            raise a.ActionError("Failed to get a campaign: " + e.message)
+
+        store_id = campaign.store_id
+
+        try:
+            store = yield stores.get_store(self.gamespace, store_id)
+        except StoreNotFound:
+            raise a.ActionError("No such store")
+
+        try:
+            store_items_raw = yield items.list_enabled_items(self.gamespace, store_id)
+        except ItemError as e:
+            raise a.ActionError(e.message)
+        else:
+            store_items = {
+                str(entry.item.item_id): entry
+                for entry in store_items_raw
+            }
+
+        try:
+            existing_items_raw = yield campaigns.list_campaign_items(self.gamespace, campaign_id)
+        except CampaignError as e:
+            raise a.ActionError(e.message)
+        else:
+            existing_items = set(
+                str(entry.item.item_id)
+                for entry in existing_items_raw
+            )
+
+        for existing_item_id in existing_items:
+            store_items.pop(existing_item_id, None)
+
+        store_items = sorted(store_items.values(), key=lambda entry: (int(entry.item.item_id), entry, ))
+
+        data = {
+            "store_name": store.name,
+            "store_id": store_id,
+            "campaign_name": campaign.name,
+            "store_items": store_items
+        }
+
+        raise a.Return(data)
+
+    def render(self, data):
+        return [
+            a.breadcrumbs([
+                a.link("stores", "Stores"),
+                a.link("store", data["store_name"], store_id=data["store_id"]),
+                a.link("campaigns", "Campaigns", store_id=data["store_id"]),
+                a.link("campaign", data["campaign_name"], campaign_id=self.context.get("campaign_id")),
+            ], "Add Item"),
+
+            a.content("Select Item", [
+                {
+                    "id": "name",
+                    "title": "Select"
+                },
+                {
+                    "id": "title",
+                    "title": "Title"
+                },
+                {
+                    "id": "category",
+                    "title": "Category"
+                },
+                {
+                    "id": "tier",
+                    "title": "Current Tier"
+                }
+            ], [
+                  {
+                      "name": [
+                          a.link("new_campaign_item", entry.item.name, icon="plus",
+                                 item_id=entry.item.item_id, campaign_id=self.context.get("campaign_id"))],
+                      "category": [
+                          a.link(
+                              "category", entry.category.name,
+                              icon="list-alt", category_id=entry.category.category_id)
+                      ],
+                      "tier": [a.link("tier", entry.tier.title, tier_id=entry.tier.tier_id)],
+                      "title": entry.item.title("EN")
+                  }
+                  for entry in data["store_items"]
+              ], "default"),
+
+            a.links("Navigate", [
+                a.link("campaign", "Go back", icon="chevron-left", campaign_id=self.context.get("campaign_id"))
+            ])
+        ]
+
+    def access_scopes(self):
+        return ["store_admin"]
+
+
+class NewCampaignItemController(a.AdminController):
+    @coroutine
+    @validate(campaign_item_tier="int",
+              campaign_item_public_data="load_json_dict",
+              campaign_item_private_data="load_json_dict")
+    def create(self, campaign_item_tier, campaign_item_public_data, campaign_item_private_data, **ignored):
+
+        campaign_id = self.context.get("campaign_id")
+        item_id = self.context.get("item_id")
+
+        stores = self.application.stores
+        items = self.application.items
+        campaigns = self.application.campaigns
+
+        with (yield self.application.db.acquire()) as db:
+            try:
+                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+            except CampaignNotFound:
+                raise a.ActionError("No such campaign")
+            except CampaignError as e:
+                raise a.ActionError("Failed to get a campaign: " + e.message)
+
+            try:
+                item = yield items.get_item(self.gamespace, item_id, db=db)
+            except ItemNotFound:
+                raise a.ActionError("No such item")
+            except ItemError as e:
+                raise a.ActionError("Failed to get an item: " + e.message)
+
+            if str(campaign.store_id) != str(item.store_id):
+                raise a.ActionError("Campaign and item do not share store")
+
+            store_id = campaign.store_id
+
+            try:
+                yield stores.get_store(self.gamespace, store_id, db=db)
+            except StoreNotFound:
+                raise a.ActionError("No such store")
+
+            try:
+                yield campaigns.add_campaign_item(
+                    self.gamespace, campaign_id, item_id, campaign_item_private_data,
+                    campaign_item_public_data, campaign_item_tier)
+            except CampaignError as e:
+                raise a.ActionError(e.message)
+
+            raise a.Redirect("campaign", message="Item has been added into the campaign",
+                             campaign_id=campaign_id)
+
+    @coroutine
+    @validate(campaign_id="int", item_id="int")
+    def get(self, campaign_id, item_id):
+
+        stores = self.application.stores
+        items = self.application.items
+        campaigns = self.application.campaigns
+        tiers = self.application.tiers
+        categories = self.application.categories
+
+        with (yield self.application.db.acquire()) as db:
+            try:
+                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+            except CampaignNotFound:
+                raise a.ActionError("No such campaign")
+            except CampaignError as e:
+                raise a.ActionError("Failed to get a campaign: " + e.message)
+
+            try:
+                item = yield items.get_item(self.gamespace, item_id, db=db)
+            except ItemNotFound:
+                raise a.ActionError("No such item")
+            except ItemError as e:
+                raise a.ActionError("Failed to get an item: " + e.message)
+
+            try:
+                category = yield categories.get_category(self.gamespace, item.category, db=db)
+            except CategoryNotFound:
+                raise a.ActionError("No such category")
+
+            if str(campaign.store_id) != str(item.store_id):
+                raise a.ActionError("Campaign and item do not share store")
+
+            store_id = campaign.store_id
+
+            try:
+                store = yield stores.get_store(self.gamespace, store_id, db=db)
+            except StoreNotFound:
+                raise a.ActionError("No such store")
+
+            try:
+                tiers_list = yield tiers.list_tiers(self.gamespace, store_id, db=db)
+            except TierError as e:
+                raise a.ActionError(e.message)
+
+            try:
+                common_scheme = yield categories.get_common_scheme(self.gamespace)
+            except CategoryNotFound:
+                common_public_item_scheme = {}
+                common_private_item_scheme = {}
+            else:
+                common_public_item_scheme = common_scheme.public_item_scheme
+                common_private_item_scheme = common_scheme.private_item_scheme
+
+            public_item_scheme = category.public_item_scheme
+            private_item_scheme = category.private_item_scheme
+
+            common.update(public_item_scheme, common_public_item_scheme)
+            common.update(private_item_scheme, common_private_item_scheme)
+
+            data = {
+                "store_name": store.name,
+                "store_id": store_id,
+                "campaign_name": campaign.name,
+                "item_name": item.name,
+                "campaign_item_public_data": item.public_data,
+                "campaign_item_private_data": item.private_data,
+                "public_item_scheme": public_item_scheme,
+                "private_item_scheme": private_item_scheme,
+                "campaign_item_tier": item.tier,
+                "tiers_list": {tier.tier_id: u"{0} ({1})".format(tier.title, tier.name) for tier in tiers_list},
+            }
+
+            raise a.Return(data)
+
+    def render(self, data):
+        return [
+            a.breadcrumbs([
+                a.link("stores", "Stores"),
+                a.link("store", data["store_name"], store_id=data["store_id"]),
+                a.link("campaigns", "Campaigns", store_id=data["store_id"]),
+                a.link("campaign", data["campaign_name"], campaign_id=self.context.get("campaign_id")),
+            ], u"Add Item: {0}".format(data["item_name"])),
+
+            a.form(u"Add an item <b>{0}</b> into a campaign <b>{1}</b>".format(
+                data["item_name"], data["campaign_name"]), fields={
+                "campaign_item_tier": a.field(
+                    "Updated Price Tier", "select", "primary",
+                    values=data["tiers_list"], order=1),
+                "campaign_item_public_data": a.field(
+                    "Updated Public Item Properties", "dorn", "primary",
+                    schema=data["public_item_scheme"], order=4, description="Available to everyone"),
+                "campaign_item_private_data": a.field(
+                    "Updated Private Item Properties", "dorn", "primary",
+                    schema=data["private_item_scheme"], order=5,
+                    description="Available only as a response to successful purchase")
+            }, methods={
+                "create": a.method("Add the Item To the Campaign", "primary"),
+            }, data=data),
+
+            a.links("Navigate", [
+                a.link("campaign", "Go back", icon="chevron-left", campaign_id=self.context.get("campaign_id"))
+            ])
+        ]
+
+    def access_scopes(self):
+        return ["store_admin"]
+
+
+class CampaignItemController(a.AdminController):
+    @coroutine
+    @validate(campaign_item_tier="int",
+              campaign_item_public_data="load_json_dict",
+              campaign_item_private_data="load_json_dict")
+    def update(self, campaign_item_tier, campaign_item_public_data, campaign_item_private_data, **ignored):
+
+        campaign_id = self.context.get("campaign_id")
+        item_id = self.context.get("item_id")
+
+        stores = self.application.stores
+        items = self.application.items
+        campaigns = self.application.campaigns
+
+        with (yield self.application.db.acquire()) as db:
+            try:
+                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+            except CampaignNotFound:
+                raise a.ActionError("No such campaign")
+            except CampaignError as e:
+                raise a.ActionError("Failed to get a campaign: " + e.message)
+
+            try:
+                item = yield items.get_item(self.gamespace, item_id, db=db)
+            except ItemNotFound:
+                raise a.ActionError("No such item")
+            except ItemError as e:
+                raise a.ActionError("Failed to get an item: " + e.message)
+
+            if str(campaign.store_id) != str(item.store_id):
+                raise a.ActionError("Campaign and item do not share store")
+
+            store_id = campaign.store_id
+
+            try:
+                yield stores.get_store(self.gamespace, store_id, db=db)
+            except StoreNotFound:
+                raise a.ActionError("No such store")
+
+            try:
+                updated = yield campaigns.update_campaign_item(
+                    self.gamespace, campaign_id, item_id, campaign_item_private_data,
+                    campaign_item_public_data, campaign_item_tier)
+            except CampaignError as e:
+                raise a.ActionError(e.message)
+
+            raise a.Redirect("campaign",
+                             message="Item has been updated" if updated else "Nothing to update",
+                             campaign_id=campaign_id)
+
+    @coroutine
+    def remove(self, **ignored):
+
+        campaign_id = self.context.get("campaign_id")
+        item_id = self.context.get("item_id")
+
+        stores = self.application.stores
+        items = self.application.items
+        campaigns = self.application.campaigns
+
+        with (yield self.application.db.acquire()) as db:
+            try:
+                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+            except CampaignNotFound:
+                raise a.ActionError("No such campaign")
+            except CampaignError as e:
+                raise a.ActionError("Failed to get a campaign: " + e.message)
+
+            try:
+                item = yield items.get_item(self.gamespace, item_id, db=db)
+            except ItemNotFound:
+                raise a.ActionError("No such item")
+            except ItemError as e:
+                raise a.ActionError("Failed to get an item: " + e.message)
+
+            if str(campaign.store_id) != str(item.store_id):
+                raise a.ActionError("Campaign and item do not share store")
+
+            store_id = campaign.store_id
+
+            try:
+                yield stores.get_store(self.gamespace, store_id, db=db)
+            except StoreNotFound:
+                raise a.ActionError("No such store")
+
+            try:
+                deleted = yield campaigns.delete_campaign_item(
+                    self.gamespace, campaign_id, item_id,)
+            except CampaignError as e:
+                raise a.ActionError(e.message)
+
+            raise a.Redirect("campaign",
+                             message="Item has been removed from campaign" if deleted else "Nothing to remove",
+                             campaign_id=campaign_id)
+
+    @coroutine
+    @validate(campaign_id="int", item_id="int")
+    def get(self, campaign_id, item_id):
+
+        stores = self.application.stores
+        items = self.application.items
+        campaigns = self.application.campaigns
+        tiers = self.application.tiers
+        categories = self.application.categories
+
+        with (yield self.application.db.acquire()) as db:
+            try:
+                campaign_item = yield campaigns.get_campaign_item(self.gamespace, campaign_id, item_id, db=db)
+            except CampaignItemNotFound:
+                raise a.ActionError("No such campaign item")
+            except CampaignError as e:
+                raise a.ActionError("Failed to get a campaign item: " + e.message)
+
+            try:
+                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+            except CampaignNotFound:
+                raise a.ActionError("No such campaign")
+            except CampaignError as e:
+                raise a.ActionError("Failed to get a campaign: " + e.message)
+
+            try:
+                item = yield items.get_item(self.gamespace, item_id, db=db)
+            except ItemNotFound:
+                raise a.ActionError("No such item")
+            except ItemError as e:
+                raise a.ActionError("Failed to get an item: " + e.message)
+
+            try:
+                category = yield categories.get_category(self.gamespace, item.category, db=db)
+            except CategoryNotFound:
+                raise a.ActionError("No such category")
+
+            if str(campaign.store_id) != str(item.store_id):
+                raise a.ActionError("Campaign and item do not share store")
+
+            store_id = campaign.store_id
+
+            try:
+                store = yield stores.get_store(self.gamespace, store_id, db=db)
+            except StoreNotFound:
+                raise a.ActionError("No such store")
+
+            try:
+                tiers_list = yield tiers.list_tiers(self.gamespace, store_id, db=db)
+            except TierError as e:
+                raise a.ActionError(e.message)
+
+            try:
+                common_scheme = yield categories.get_common_scheme(self.gamespace)
+            except CategoryNotFound:
+                common_public_item_scheme = {}
+                common_private_item_scheme = {}
+            else:
+                common_public_item_scheme = common_scheme.public_item_scheme
+                common_private_item_scheme = common_scheme.private_item_scheme
+
+            public_item_scheme = category.public_item_scheme
+            private_item_scheme = category.private_item_scheme
+
+            common.update(public_item_scheme, common_public_item_scheme)
+            common.update(private_item_scheme, common_private_item_scheme)
+
+            data = {
+                "store_name": store.name,
+                "store_id": store_id,
+                "campaign_name": campaign.name,
+                "item_name": item.name,
+                "campaign_item_public_data": campaign_item.public_data,
+                "campaign_item_private_data": campaign_item.private_data,
+                "campaign_item_tier": campaign_item.tier,
+                "public_item_scheme": public_item_scheme,
+                "private_item_scheme": private_item_scheme,
+                "tiers_list": {tier.tier_id: u"{0} ({1})".format(tier.title, tier.name) for tier in tiers_list},
+            }
+
+            raise a.Return(data)
+
+    def render(self, data):
+        return [
+            a.breadcrumbs([
+                a.link("stores", "Stores"),
+                a.link("store", data["store_name"], store_id=data["store_id"]),
+                a.link("campaigns", "Campaigns", store_id=data["store_id"]),
+                a.link("campaign", data["campaign_name"], campaign_id=self.context.get("campaign_id")),
+            ], u"Update Item: {0}".format(data["item_name"])),
+
+            a.form(u"Update an item <b>{0}</b> in campaign <b>{1}</b>".format(
+                data["item_name"], data["campaign_name"]), fields={
+                "campaign_item_tier": a.field(
+                    "Updated Price Tier", "select", "primary",
+                    values=data["tiers_list"], order=1),
+                "campaign_item_public_data": a.field(
+                    "Updated Public Item Properties", "dorn", "primary",
+                    schema=data["public_item_scheme"], order=4, description="Available to everyone"),
+                "campaign_item_private_data": a.field(
+                    "Updated Private Item Properties", "dorn", "primary",
+                    schema=data["private_item_scheme"], order=5,
+                    description="Available only as a response to successful purchase")
+            }, methods={
+                "update": a.method("Update an Item in the Campaign", "primary", order=2),
+                "remove": a.method("Remove from Campaign", "danger", order=1),
+            }, data=data),
+
+            a.links("Navigate", [
+                a.link("campaign", "Go back", icon="chevron-left", campaign_id=self.context.get("campaign_id"))
+            ])
+        ]
+
+    def access_scopes(self):
+        return ["store_admin"]
 
 
 def init():

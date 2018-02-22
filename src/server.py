@@ -19,6 +19,7 @@ from model.item import ItemModel
 from model.category import CategoryModel
 from model.tier import TierModel, CurrencyModel
 from model.order import OrdersModel
+from model.campaign import CampaignsModel
 
 
 class StoreServer(common.server.Server):
@@ -45,14 +46,15 @@ class StoreServer(common.server.Server):
         self.categories = CategoryModel(self.db)
         self.tiers = TierModel(self.db)
         self.currencies = CurrencyModel(self.db)
-        self.stores = StoreModel(self.db, self.items, self.tiers, self.currencies)
-        self.orders = OrdersModel(self, self.db, self.tiers)
+        self.campaigns = CampaignsModel(self.db)
+        self.stores = StoreModel(self.db, self.items, self.tiers, self.currencies, self.campaigns)
+        self.orders = OrdersModel(self, self.db, self.tiers, self.campaigns)
 
         admin.init()
 
     def get_models(self):
         return [self.currencies, self.categories, self.stores,
-                self.items, self.tiers, self.orders]
+                self.items, self.tiers, self.orders, self.campaigns]
 
     def get_admin(self):
         return {
@@ -76,7 +78,13 @@ class StoreServer(common.server.Server):
             "currencies": admin.CurrenciesController,
             "currency": admin.CurrencyController,
             "new_currency": admin.NewCurrencyController,
-            "orders": admin.OrdersController
+            "orders": admin.OrdersController,
+            "campaigns": admin.StoreCampaignsController,
+            "new_campaign": admin.NewStoreCampaignController,
+            "campaign": admin.StoreCampaignController,
+            "new_campaign_item_select": admin.NewCampaignItemSelectController,
+            "new_campaign_item": admin.NewCampaignItemController,
+            "campaign_item": admin.CampaignItemController
         }
 
     def get_internal_handler(self):
@@ -98,6 +106,7 @@ class StoreServer(common.server.Server):
             (r"/hook/([0-9]+)/(.*)/(.*)", handler.WebHookHandler),
             (r"/front/xsolla", handler.XsollaFrontHandler),
         ]
+
 
 if __name__ == "__main__":
     stt = common.server.init()

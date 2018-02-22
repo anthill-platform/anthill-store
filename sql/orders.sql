@@ -12,14 +12,17 @@ CREATE TABLE `orders` (
   `order_currency` varchar(16) NOT NULL DEFAULT '',
   `order_total` float NOT NULL,
   `order_info` json DEFAULT NULL,
+  `order_campaign_id` int(11) unsigned DEFAULT NULL,
   PRIMARY KEY (`order_id`),
   KEY `store_id` (`store_id`),
   KEY `pack_id` (`tier_id`),
   KEY `item_id` (`item_id`),
   KEY `component_id` (`component_id`),
   KEY `account_id` (`account_id`),
+  KEY `order_campaign_id` (`order_campaign_id`),
   CONSTRAINT `orders_ibfk_1` FOREIGN KEY (`store_id`) REFERENCES `stores` (`store_id`),
   CONSTRAINT `orders_ibfk_3` FOREIGN KEY (`tier_id`) REFERENCES `tiers` (`tier_id`),
   CONSTRAINT `orders_ibfk_4` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`),
-  CONSTRAINT `orders_ibfk_5` FOREIGN KEY (`component_id`) REFERENCES `store_components` (`component_id`)
+  CONSTRAINT `orders_ibfk_5` FOREIGN KEY (`component_id`) REFERENCES `store_components` (`component_id`),
+  CONSTRAINT `orders_ibfk_6` FOREIGN KEY (`order_campaign_id`) REFERENCES `campaigns` (`campaign_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

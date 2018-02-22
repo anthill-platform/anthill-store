@@ -9,8 +9,8 @@ import ujson
 
 class CategoryAdapter(object):
     def __init__(self, record):
-        self.category_id = record["category_id"]
-        self.name = record["category_name"]
+        self.category_id = record.get("category_id")
+        self.name = record.get("category_name")
         self.public_item_scheme = record.get("category_public_item_scheme")
         self.private_item_scheme = record.get("category_private_item_scheme")
 
@@ -78,9 +78,9 @@ class CategoryModel(Model):
 
     @coroutine
     @validate(gamespace_id="int", category_id="int")
-    def get_category(self, gamespace_id, category_id):
+    def get_category(self, gamespace_id, category_id, db=None):
         try:
-            result = yield self.db.get("""
+            result = yield (db or self.db).get("""
                 SELECT *
                 FROM `categories`
                 WHERE `category_id`=%s AND `gamespace_id`=%s;

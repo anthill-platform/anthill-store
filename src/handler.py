@@ -18,16 +18,15 @@ class StoreHandler(AuthenticatedHandler):
     @scoped(["store"])
     @coroutine
     def get(self, store_name):
-
         stores = self.application.stores
-
         gamespace = self.token.get(AccessToken.GAMESPACE)
 
-        try:
-            store_data = yield stores.find_store_data(
-                gamespace,
-                store_name)
+        extra_start_time = self.get_argument("extra_start_time", 0)
+        extra_end_time = self.get_argument("extra_end_time", self.get_argument("extra_time", 0))
 
+        try:
+            store_data = yield stores.build_store_data(
+                gamespace, store_name, extra_start_time, extra_end_time)
         except StoreNotFound:
             raise HTTPError(404, "Store not found")
         except ValidationError as e:
@@ -163,10 +162,7 @@ class InternalHandler(object):
     def get_store(self, gamespace, name):
 
         try:
-            store_data = yield self.application.stores.find_store_data(
-                gamespace,
-                name)
-
+            store_data = yield self.application.stores.build_store_data(gamespace, name)
         except StoreNotFound:
             raise InternalError(404, "Store not found")
         except ValidationError as e:

@@ -140,7 +140,8 @@ class SteamStoreComponent(StoreComponent):
 
     # noinspection SpellCheckingInspection
     @coroutine
-    def new_order(self, app, gamespace_id, account_id, order_id, currency, price, amount, total, store, item, env):
+    def new_order(self, app, gamespace_id, account_id, order_id, currency,
+                  price, amount, total, store, item, env, campaign_item):
 
         steam_id = env.get("steam_id")
 

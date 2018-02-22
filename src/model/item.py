@@ -1,24 +1,25 @@
 from tornado.gen import coroutine, Return
 
-from common.database import DatabaseError
+from common.database import DatabaseError, DuplicateError
 from common.model import Model
 from common.validate import validate
 from category import CategoryAdapter
 
-import common
+from tier import TierAdapter
+
 import ujson
 
 
-class ItemAdapter(object):
+class StoreItemAdapter(object):
     def __init__(self, record):
-        self.item_id = record["item_id"]
-        self.name = record["item_name"]
-        self.store_id = record["store_id"]
+        self.item_id = str(record.get("item_id"))
+        self.name = record.get("item_name")
+        self.store_id = str(record.get("store_id"))
         self.public_data = record.get("item_public_data")
         self.private_data = record.get("item_private_data")
-        self.category = record["item_category"]
-        self.method = record["item_method"]
-        self.method_data = record["item_method_data"]
+        self.category = record.get("item_category")
+        self.tier = str(record.get("item_tier"))
+        self.enabled = bool(record.get("item_enabled"))
 
     def description(self, language):
         descriptions = self.public_data.get("description", {})
@@ -40,11 +41,23 @@ class ItemAdapter(object):
 
         return "Unknown"
 
+    def apply_campaign(self, campaign_item):
+        self.public_data = campaign_item.public_data
+        self.private_data = campaign_item.private_data
+        self.tier = campaign_item.tier
 
-class ItemCategoryAdapter(ItemAdapter):
+
+class StoreItemCategoryAdapter(StoreItemAdapter):
     def __init__(self, record):
-        super(ItemCategoryAdapter, self).__init__(record)
+        super(StoreItemCategoryAdapter, self).__init__(record)
         self.category = CategoryAdapter(record)
+
+
+class ItemTierCategoryAdapter(object):
+    def __init__(self, data):
+        self.item = StoreItemAdapter(data)
+        self.tier = TierAdapter(data)
+        self.category = CategoryAdapter(data)
 
 
 class ItemError(Exception):
@@ -98,13 +111,13 @@ class ItemModel(Model):
         if result is None:
             raise ItemNotFound()
 
-        raise Return(ItemAdapter(result))
+        raise Return(StoreItemAdapter(result))
 
     @coroutine
     @validate(gamespace_id="int", item_id="int")
-    def get_item(self, gamespace_id, item_id):
+    def get_item(self, gamespace_id, item_id, db=None):
         try:
-            result = yield self.db.get("""
+            result = yield (db or self.db).get("""
                 SELECT *
                 FROM `items`
                 WHERE `item_id`=%s AND `gamespace_id`=%s;
@@ -115,75 +128,108 @@ class ItemModel(Model):
         if result is None:
             raise ItemNotFound()
 
-        raise Return(ItemAdapter(result))
+        raise Return(StoreItemAdapter(result))
 
     @coroutine
     @validate(gamespace_id="int", store_id="int")
-    def list_items(self, gamespace_id, store_id):
+    def list_items(self, gamespace_id, store_id, db=None):
         try:
-            result = yield self.db.query("""
-                SELECT *
-                FROM `items` i JOIN `categories` c
-                WHERE i.`store_id`=%s AND i.`gamespace_id`=%s AND i.`item_category`=c.`category_id`;
-            """, store_id, gamespace_id)
+            result = yield (db or self.db).query("""
+                SELECT 
+                    `items`.`item_id`, 
+                    `items`.`item_name`, 
+                    `items`.`item_public_data`, 
+                    `items`.`item_enabled`,
+                    `tiers`.`tier_name`, 
+                    `tiers`.`tier_title`, 
+                    `tiers`.`tier_id`, 
+                    `tiers`.`tier_product`, 
+                    `tiers`.`tier_prices`, 
+                    `categories`.`category_id`,
+                    `categories`.`category_name`
+                FROM `items`, `tiers`, `categories`
+                WHERE
+                `items`.`gamespace_id`=%s AND
+                `items`.`store_id`=%s AND
+                `items`.`item_category`=`categories`.`category_id` AND
+                `tiers`.`tier_id`=`items`.`item_tier`
+                ORDER BY `items`.`item_id` ASC;
+            """, gamespace_id, store_id)
         except DatabaseError as e:
-            raise ItemError("Failed to list items: " + e.args[1])
+            raise ItemError("Failed to find store data: " + e.args[1])
 
-        raise Return(map(ItemCategoryAdapter, result))
+        raise Return(map(ItemTierCategoryAdapter, result))
+
+    @coroutine
+    @validate(gamespace_id="int", store_id="int")
+    def list_enabled_items(self, gamespace_id, store_id, db=None):
+        try:
+            result = yield (db or self.db).query("""
+                SELECT 
+                    `items`.`item_id`, 
+                    `items`.`item_name`, 
+                    `items`.`item_public_data`, 
+                    `items`.`item_enabled`,
+                    `tiers`.`tier_name`, 
+                    `tiers`.`tier_title`, 
+                    `tiers`.`tier_id`, 
+                    `tiers`.`tier_product`, 
+                    `tiers`.`tier_prices`, 
+                    `categories`.`category_id`,
+                    `categories`.`category_name`
+                FROM `items`, `tiers`, `categories`
+                WHERE
+                `items`.`gamespace_id`=%s AND
+                `items`.`store_id`=%s AND
+                `items`.`item_enabled`=1 AND
+                `items`.`item_category`=`categories`.`category_id` AND
+                `tiers`.`tier_id`=`items`.`item_tier`
+                ORDER BY `items`.`item_id` ASC;
+            """, gamespace_id, store_id)
+        except DatabaseError as e:
+            raise ItemError("Failed to find store data: " + e.args[1])
+
+        raise Return(map(ItemTierCategoryAdapter, result))
 
     @coroutine
     @validate(gamespace_id="int", store_id="int", category_id="int", item_name="str",
-              item_public_data="json", item_private_data="json",
-              item_method="str_name", method_data="json")
-    def new_item(self, gamespace_id, store_id, category_id, item_name, item_public_data,
-                 item_private_data, item_method, method_data):
-
-        try:
-            yield self.find_item(gamespace_id, store_id, item_name)
-        except ItemNotFound:
-            pass
-        else:
-            raise ItemError("Item '{0}' already exists is such store.".format(item_name))
-
+              item_enabled="bool", item_public_data="json", item_private_data="json", item_tier="int")
+    def new_item(self, gamespace_id, store_id, category_id, item_name, item_enabled,
+                 item_public_data, item_private_data, item_tier):
         try:
             item_id = yield self.db.insert(
                 """
                     INSERT INTO `items`
                     (`gamespace_id`, `store_id`, `item_category`, `item_name`,
-                        `item_public_data`, `item_private_data`, `item_method`, `item_method_data`)
+                        `item_enabled`, `item_public_data`, `item_private_data`, `item_tier`)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
-                """, gamespace_id, store_id, category_id, item_name,
-                ujson.dumps(item_public_data), ujson.dumps(item_private_data),
-                item_method, ujson.dumps(method_data))
+                """, gamespace_id, store_id, category_id, item_name, int(item_enabled),
+                ujson.dumps(item_public_data), ujson.dumps(item_private_data), item_tier)
+        except DuplicateError:
+            raise ItemError("Item '{0}' already exists is such store.".format(item_name))
         except DatabaseError as e:
             raise ItemError("Failed to add new item: " + e.args[1])
 
         raise Return(item_id)
 
     @coroutine
-    @validate(gamespace_id="int", item_id="int", item_name="str", item_public_data="json", item_private_data="json")
-    def update_item(self, gamespace_id, item_id, item_name, item_public_data, item_private_data):
+    @validate(gamespace_id="int", item_id="int", item_name="str", item_enabled="bool",
+              item_public_data="json", item_private_data="json", item_tier="int")
+    def update_item(self, gamespace_id, item_id, item_name, item_enabled,
+                    item_public_data, item_private_data, item_tier):
 
         try:
             yield self.db.execute("""
                 UPDATE `items`
-                SET `item_name`=%s, `item_public_data`=%s, `item_private_data`=%s
+                SET `item_name`=%s, `item_enabled`=%s, 
+                    `item_public_data`=%s, `item_private_data`=%s, `item_tier`=%s
                 WHERE `item_id`=%s AND `gamespace_id`=%s;
-            """, item_name, ujson.dumps(item_public_data), ujson.dumps(item_private_data), item_id, gamespace_id)
+            """, item_name, int(item_enabled), ujson.dumps(item_public_data),
+            ujson.dumps(item_private_data), item_tier, item_id, gamespace_id)
+        except DuplicateError:
+            raise ItemError("An item with that name already exists")
         except DatabaseError as e:
             raise ItemError("Failed to update item: " + e.args[1])
-
-    @coroutine
-    @validate(gamespace_id="int", item_id="int", method_data="json")
-    def update_item_billing(self, gamespace_id, item_id, method_data):
-        try:
-            yield self.db.execute("""
-                UPDATE `items`
-                SET `item_method_data`=%s
-                WHERE `item_id`=%s AND `gamespace_id`=%s;
-            """, ujson.dumps(method_data), item_id, gamespace_id)
-        except DatabaseError as e:
-            raise ItemError("Failed to update item billing: " + e.args[1])
 
 
 class ItemNotFound(Exception):
