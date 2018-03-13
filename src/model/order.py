@@ -359,8 +359,11 @@ class OrdersModel(Model):
             self.app.monitor_rate("orders", "updated", status=status)
 
     @coroutine
-    @validate(gamespace_id="int", order_id="int", old_status="str_name", new_status="str_name")
-    def update_order_status_reliable(self, gamespace_id, order_id, old_status, new_status, new_info=None):
+    @validate(gamespace_id="int", order_id="int", old_status="str_name",
+              new_status="str_name", ensure_order_total="int", ensure_item_id="int")
+    def update_order_status_reliable(self, gamespace_id, order_id, old_status,
+                                     new_status, new_info=None,
+                                     ensure_order_total=None, ensure_item_id=None):
 
         application = self.app
 
@@ -377,6 +380,16 @@ class OrdersModel(Model):
 
                     if not order:
                         raise Return(False)
+
+                    if ensure_order_total is not None:
+                        order_total = int(order["order_total"])
+                        if order_total != ensure_order_total:
+                            raise OrderError(409, "Order has wrong total.")
+
+                    if ensure_item_id is not None:
+                        item_id = int(order["item_id"])
+                        if item_id != ensure_item_id:
+                            raise OrderError(409, "Order has wrong item_id.")
 
                     order_info = order["order_info"] or {}
 

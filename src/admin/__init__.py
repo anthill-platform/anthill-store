@@ -2888,3 +2888,4 @@ def init():
     import appstore
     import steam
     import xsolla
+    import mailru

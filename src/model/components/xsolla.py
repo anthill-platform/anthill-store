@@ -63,6 +63,14 @@ class XsollaStoreComponent(StoreComponent):
     @coroutine
     def order_callback(self, app, gamespace_id, store_id, arguments, headers, body_str):
 
+        if body_str is None:
+            raise StoreComponentError(400, {
+                "error": {
+                    "code": "CORRUPTED_JSON",
+                    "message": "Json Object is corrupted"
+                }
+            })
+
         try:
             body = ujson.loads(body_str)
         except (KeyError, ValueError):

@@ -2,7 +2,7 @@
 from tornado.gen import coroutine, Return
 from tornado.web import HTTPError
 
-from common.access import scoped, AccessToken
+from common.access import scoped, AccessToken, remote_ip
 from common.handler import AuthenticatedHandler, AnthillRequestHandler
 from common.validate import ValidationError, validate
 from common.internal import InternalError
@@ -58,11 +58,14 @@ class NewOrderHandler(AuthenticatedHandler):
             env = ujson.loads(env)
         except (KeyError, ValueError):
             raise HTTPError(400, "Corrupted env")
+        else:
+            if "ip_address" not in env:
+                env["ip_address"] = remote_ip(self.request)
 
         try:
             order_info = yield orders.new_order(
-                gamespace_id, account_id, store_name, component_name, item_name,
-                currency_name, amount, env)
+                gamespace_id, account_id, store_name, component_name,
+                item_name, currency_name, amount, env)
         except OrderError as e:
             raise HTTPError(e.code, e.message)
         except ValidationError as e:
@@ -132,6 +135,42 @@ class WebHookHandler(AuthenticatedHandler):
 
         try:
             result = yield orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, body)
+        except NoOrderError:
+            raise HTTPError(404, "No such order")
+        except OrderError as e:
+            self.set_status(e.code)
+            if isinstance(e.message, dict):
+                self.dumps(e.message)
+                return
+
+            self.write(e.message)
+            return
+        except ValidationError as e:
+            raise HTTPError(400, e.message)
+
+        if result:
+            if isinstance(result, dict):
+                self.dumps(result)
+                return
+
+            self.write(result)
+
+    @coroutine
+    def get(self, gamespace_id, store_name, component_name):
+        orders = self.application.orders
+
+        arguments = {
+            key: value[0]
+            for key, value in self.request.arguments.iteritems()
+        }
+
+        headers = {
+            key: value
+            for key, value in self.request.headers.iteritems()
+        }
+
+        try:
+            result = yield orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, None)
         except NoOrderError:
             raise HTTPError(404, "No such order")
         except OrderError as e:

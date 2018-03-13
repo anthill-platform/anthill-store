@@ -1,5 +1,5 @@
 
-from tornado.gen import coroutine, Return, Future, sleep
+from tornado.gen import coroutine, Return, Future
 
 from common.database import DatabaseError
 from common.model import Model

@@ -10,6 +10,7 @@ import common.keyvalue
 
 from common.social.steam import SteamAPI
 from common.social.xsolla import XsollaAPI
+from common.social.mailru import MailRuAPI
 
 import admin
 import options as _opts
@@ -41,6 +42,7 @@ class StoreServer(common.server.Server):
 
         self.steam_api = SteamAPI(self.cache)
         self.xsolla_api = XsollaAPI(self.cache)
+        self.mailru_api = MailRuAPI(self.cache)
 
         self.items = ItemModel(self.db)
         self.categories = CategoryModel(self.db)
