@@ -177,7 +177,7 @@ class MailRuStoreComponent(StoreComponent):
 
         total_float = total / 100.0
 
-        arguments = {
+        merchant_param = {
             "uid": str(uid_parsed[1]),
             "ip": ip_address,
             "amount": '%.2f' % total_float,
@@ -185,6 +185,10 @@ class MailRuStoreComponent(StoreComponent):
             "order_id": order_id,
             "account_id": account_id,
             "description": description
+        }
+
+        arguments = {
+            "merchant_param": ujson.dumps(merchant_param)
         }
 
         try:
