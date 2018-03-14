@@ -170,7 +170,7 @@ class WebHookHandler(AuthenticatedHandler):
         }
 
         try:
-            result = yield orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, None)
+            result = yield orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, "")
         except NoOrderError:
             raise HTTPError(404, "No such order")
         except OrderError as e:
