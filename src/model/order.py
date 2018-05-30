@@ -242,8 +242,8 @@ class OrdersModel(Model):
             }, currency=successful_order["order_currency"])
 
     @coroutine
-    def started(self):
-        yield super(OrdersModel, self).started()
+    def started(self, application):
+        yield super(OrdersModel, self).started(application)
         if self.monitoring_report_callback:
             self.monitoring_report_callback.start()
             yield self.__update_monitoring_status__()
@@ -259,6 +259,27 @@ class OrdersModel(Model):
 
     def get_setup_db(self):
         return self.db
+
+    def has_delete_account_event(self):
+        return True
+
+    @coroutine
+    def accounts_deleted(self, gamespace, accounts, gamespace_only):
+        try:
+            if gamespace_only:
+                yield self.db.execute(
+                    """
+                        DELETE FROM `orders`
+                        WHERE `gamespace_id`=%s AND `account_id` IN %s;
+                    """, gamespace, accounts)
+            else:
+                yield self.db.execute(
+                    """
+                        DELETE FROM `orders`
+                        WHERE `account_id` IN %s;
+                    """, accounts)
+        except DatabaseError as e:
+            raise OrderError(500, "Failed to delete user orders: " + e.args[1])
 
     @coroutine
     def __gather_order_info__(self, gamespace_id, store, component, item, db=None):
