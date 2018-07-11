@@ -1,27 +1,18 @@
-
+# noinspection PyUnresolvedReferences
 from admin import StoreAdminComponents, TierAdminComponents, StoreComponentAdmin, TierComponentAdmin
+from steam import SteamStoreComponentAdmin
 from model.components.mailru import MailRuStoreComponent
 
 import common.admin as a
 
 
-class MailRuStoreComponentAdmin(StoreComponentAdmin):
+class MailRuStoreComponentAdmin(SteamStoreComponentAdmin):
+    """
+    MailRu store component copies SteamStoreComponent, except has different URLs
+    """
     def __init__(self, name, action, store_id):
-        super(MailRuStoreComponentAdmin, self).__init__(name, action, store_id, MailRuStoreComponent)
-
-    def get(self):
-        return {
-        }
-
-    def icon(self):
-        return "credit-card"
-
-    def render(self):
-        return {
-        }
-
-    def update(self, **fields):
-        pass
+        super(MailRuStoreComponentAdmin, self).__init__(name, action, store_id,
+                                                        component=MailRuStoreComponent)
 
 
 StoreAdminComponents.register_component("mailru", MailRuStoreComponentAdmin)

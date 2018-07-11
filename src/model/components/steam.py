@@ -24,11 +24,19 @@ class SteamErrorCodes(object):
 class SteamStoreComponent(StoreComponent):
     API_URL = "https://api.steampowered.com/ISteamMicroTxn"
     SANDBOX_API_URL = "https://api.steampowered.com/ISteamMicroTxnSandbox"
+    INIT_TX_VERSION = "V0002"
+    UPDATE_TX_VERSION = "V0001"
     PURCHASE_AMOUNT_LIMIT = 1000000
 
-    def __init__(self):
+    def __init__(self, api_url=API_URL, sandbox_api_url=SANDBOX_API_URL,
+                 init_tx_version=INIT_TX_VERSION, update_tx_version=UPDATE_TX_VERSION):
         super(SteamStoreComponent, self).__init__()
+        self.api_url = api_url
+        self.sandbox_api_url = sandbox_api_url
         self.sandbox = False
+
+        self.init_tx_version = init_tx_version
+        self.update_tx_version = update_tx_version
 
         self.client = AsyncHTTPClient()
 
@@ -44,7 +52,10 @@ class SteamStoreComponent(StoreComponent):
         self.sandbox = data.get("sandbox")
 
     def __url__(self):
-        return SteamStoreComponent.SANDBOX_API_URL if self.sandbox else SteamStoreComponent.API_URL
+        return self.sandbox_api_url if self.sandbox else self.api_url
+
+    def get_api(self, app):
+        return app.steam_api
 
     @coroutine
     def update_order(self, app, gamespace_id, account_id, order, order_info):
@@ -54,9 +65,8 @@ class SteamStoreComponent(StoreComponent):
             raise Return(result)
 
         order_id = order.order_id
-        steam_api = app.steam_api
 
-        private_key = yield steam_api.get_private_key(gamespace_id)
+        private_key = yield self.get_api(app).get_private_key(gamespace_id)
 
         arguments = {
             "orderid": order_id,
@@ -65,7 +75,7 @@ class SteamStoreComponent(StoreComponent):
         }
 
         request = HTTPRequest(
-            url=self.__url__() + "/FinalizeTxn/V0001",
+            url=self.__url__() + "/FinalizeTxn/" + self.update_tx_version,
             method="POST",
             body=urllib.urlencode(arguments))
 
@@ -148,12 +158,12 @@ class SteamStoreComponent(StoreComponent):
         if not steam_id:
             raise StoreComponentError(400, "No username environment variable")
 
+        ipaddress = env.get("ip_address")
+
         if amount > SteamStoreComponent.PURCHASE_AMOUNT_LIMIT:
             raise StoreComponentError(400, "Amount limit is reached")
 
-        steam_api = app.steam_api
-
-        private_key = yield steam_api.get_private_key(gamespace_id)
+        private_key = yield self.get_api(app).get_private_key(gamespace_id)
 
         language = env.get("language", "EN")
         description = item.description(language)
@@ -165,6 +175,7 @@ class SteamStoreComponent(StoreComponent):
             "itemcount": 1,
             "language": language,
             "currency": currency,
+            "ipaddress": ipaddress,
             "usersession": "client",
             "key": private_key.key,
 
@@ -185,7 +196,7 @@ class SteamStoreComponent(StoreComponent):
         }
 
         request = HTTPRequest(
-            url=self.__url__() + "/InitTxn/V0002",
+            url=self.__url__() + "/InitTxn/" + self.init_tx_version,
             method="POST",
             body=urllib.urlencode(arguments))
 

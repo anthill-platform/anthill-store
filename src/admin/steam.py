@@ -1,4 +1,4 @@
-
+# noinspection PyUnresolvedReferences
 from admin import StoreAdminComponents, TierAdminComponents, StoreComponentAdmin, TierComponentAdmin
 from model.components.steam import SteamStoreComponent
 
@@ -6,8 +6,8 @@ import common.admin as a
 
 
 class SteamStoreComponentAdmin(StoreComponentAdmin):
-    def __init__(self, name, action, store_id):
-        super(SteamStoreComponentAdmin, self).__init__(name, action, store_id, SteamStoreComponent)
+    def __init__(self, name, action, store_id, component=SteamStoreComponent):
+        super(SteamStoreComponentAdmin, self).__init__(name, action, store_id, component)
 
     def get(self):
         return {
