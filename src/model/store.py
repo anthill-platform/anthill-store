@@ -361,7 +361,7 @@ class StoreModel(Model):
         try:
             store_id = yield self.db.insert("""
                 INSERT INTO `stores`
-                (`gamespace_id`, `store_name`, `campaign_scheme`)
+                (`gamespace_id`, `store_name`, `store_campaign_scheme`)
                 VALUES (%s, %s, %s);
             """, gamespace_id, store_name, ujson.dumps(campaign_scheme))
         except DatabaseError as e:
