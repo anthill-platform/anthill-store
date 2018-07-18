@@ -212,12 +212,13 @@ class InternalHandler(object):
         })
 
     @coroutine
-    @validate(gamespace="int", account="int", store="str_name", item="str_name", amount="int", component="str_name")
-    def new_order(self, gamespace, account, store, item, currency, amount, component):
+    @validate(gamespace="int", account="int", store="str_name", item="str_name",
+              amount="int", component="str_name", env="json_dict")
+    def new_order(self, gamespace, account, store, item, currency, amount, component, env):
 
         try:
             result = yield self.application.orders.new_order(
-                gamespace, account, store, component, item, currency, amount, {})
+                gamespace, account, store, component, item, currency, amount, env)
 
         except OrderError as e:
             raise InternalError(e.code, e.message)
