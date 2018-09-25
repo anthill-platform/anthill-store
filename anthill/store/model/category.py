@@ -1,8 +1,7 @@
-from tornado.gen import coroutine, Return
 
-from common.database import DatabaseError
-from common.model import Model
-from common.validate import validate
+from anthill.common.database import DatabaseError
+from anthill.common.model import Model
+from anthill.common.validate import validate
 
 import ujson
 
@@ -47,11 +46,10 @@ class CategoryModel(Model):
     def get_setup_tables(self):
         return ["categories", "categories_common"]
 
-    @coroutine
     @validate(gamespace_id="int", category_id="int")
-    def delete_category(self, gamespace_id, category_id):
+    async def delete_category(self, gamespace_id, category_id):
         try:
-            yield self.db.execute("""
+            await self.db.execute("""
                 DELETE
                 FROM `categories`
                 WHERE `category_id`=%s AND `gamespace_id`=%s;
@@ -59,11 +57,10 @@ class CategoryModel(Model):
         except DatabaseError as e:
             raise CategoryError("Failed to delete category: " + e.args[1])
 
-    @coroutine
     @validate(gamespace_id="int", category_name="str")
-    def find_category(self, gamespace_id, category_name):
+    async def find_category(self, gamespace_id, category_name):
         try:
-            result = yield self.db.get("""
+            result = await self.db.get("""
                 SELECT *
                 FROM `categories`
                 WHERE `category_name`=%s AND `gamespace_id`=%s;
@@ -74,13 +71,12 @@ class CategoryModel(Model):
         if result is None:
             raise CategoryNotFound()
 
-        raise Return(CategoryAdapter(result))
+        return CategoryAdapter(result)
 
-    @coroutine
     @validate(gamespace_id="int", category_id="int")
-    def get_category(self, gamespace_id, category_id, db=None):
+    async def get_category(self, gamespace_id, category_id, db=None):
         try:
-            result = yield (db or self.db).get("""
+            result = await (db or self.db).get("""
                 SELECT *
                 FROM `categories`
                 WHERE `category_id`=%s AND `gamespace_id`=%s;
@@ -91,13 +87,12 @@ class CategoryModel(Model):
         if result is None:
             raise CategoryNotFound()
 
-        raise Return(CategoryAdapter(result))
+        return CategoryAdapter(result)
 
-    @coroutine
     @validate(gamespace_id="int")
-    def get_common_scheme(self, gamespace_id):
+    async def get_common_scheme(self, gamespace_id):
         try:
-            result = yield self.db.get("""
+            result = await self.db.get("""
                 SELECT `public_item_scheme`, `private_item_scheme`
                 FROM `categories_common`
                 WHERE `gamespace_id`=%s;
@@ -108,13 +103,12 @@ class CategoryModel(Model):
         if result is None:
             raise CategoryNotFound()
 
-        raise Return(CommonCategoryAdapter(result))
+        return CommonCategoryAdapter(result)
 
-    @coroutine
     @validate(gamespace_id="int")
-    def list_categories(self, gamespace_id):
+    async def list_categories(self, gamespace_id):
         try:
-            result = yield self.db.query("""
+            result = await self.db.query("""
                 SELECT *
                 FROM `categories`
                 WHERE `gamespace_id`=%s;
@@ -122,25 +116,24 @@ class CategoryModel(Model):
         except DatabaseError as e:
             raise CategoryError("Failed to list categories: " + e.args[1])
 
-        raise Return(map(CategoryAdapter, result))
+        return map(CategoryAdapter, result)
 
-    @coroutine
     @validate(gamespace_id="int", category_name="str",
               category_public_item_scheme="json_dict",
               category_private_item_scheme="json_dict")
-    def new_category(self, gamespace_id, category_name,
+    async def new_category(self, gamespace_id, category_name,
                      category_public_item_scheme,
                      category_private_item_scheme):
 
         try:
-            yield self.find_category(gamespace_id, category_name)
+            await self.find_category(gamespace_id, category_name)
         except CategoryNotFound:
             pass
         else:
             raise CategoryError("category '{0}' already exists.".format(category_name))
 
         try:
-            result = yield self.db.insert(
+            result = await self.db.insert(
                 """
                     INSERT INTO `categories`
                     (`gamespace_id`, `category_name`, `category_public_item_scheme`, `category_private_item_scheme`)
@@ -150,15 +143,14 @@ class CategoryModel(Model):
         except DatabaseError as e:
             raise CategoryError("Failed to add new category: " + e.args[1])
 
-        raise Return(result)
+        return result
 
-    @coroutine
     @validate(gamespace_id="int", category_id="int", category_name="str",
               category_public_item_scheme="json_dict", category_private_item_scheme="json_dict")
-    def update_category(self, gamespace_id, category_id, category_name,
+    async def update_category(self, gamespace_id, category_id, category_name,
                         category_public_item_scheme, category_private_item_scheme):
         try:
-            yield self.db.execute(
+            await self.db.execute(
                 """
                     UPDATE `categories`
                     SET `category_name`=%s, `category_public_item_scheme`=%s, `category_private_item_scheme`=%s
@@ -171,15 +163,14 @@ class CategoryModel(Model):
         except DatabaseError as e:
             raise CategoryError("Failed to update category: " + e.args[1])
 
-    @coroutine
     @validate(gamespace_id="int", public_item_scheme="json_dict", private_item_scheme="json_dict")
-    def update_common_scheme(self, gamespace_id, public_item_scheme, private_item_scheme):
+    async def update_common_scheme(self, gamespace_id, public_item_scheme, private_item_scheme):
 
         public_item_scheme = ujson.dumps(public_item_scheme)
         private_item_scheme = ujson.dumps(private_item_scheme)
 
         try:
-            yield self.db.insert("""
+            await self.db.insert("""
                 INSERT INTO `categories_common`
                 (`public_item_scheme`, `private_item_scheme`, `gamespace_id`)
                 VALUES(%s, %s, %s)

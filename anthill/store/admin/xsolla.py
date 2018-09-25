@@ -1,8 +1,8 @@
 
-from admin import StoreAdminComponents, TierAdminComponents, StoreComponentAdmin, TierComponentAdmin
-from model.components.xsolla import XsollaStoreComponent
+from . import StoreAdminComponents, TierAdminComponents, StoreComponentAdmin, TierComponentAdmin
+from .. model.components.xsolla import XsollaStoreComponent
 
-import common.admin as a
+import anthill.common.admin as a
 
 
 class XsollaStoreComponentAdmin(StoreComponentAdmin):

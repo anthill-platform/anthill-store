@@ -1,4 +1,4 @@
-from steam import SteamStoreComponent
+from . steam import SteamStoreComponent
 from . import StoreComponents
 
 

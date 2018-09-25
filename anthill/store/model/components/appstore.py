@@ -1,6 +1,4 @@
 
-from tornado.gen import coroutine, Return
-
 from . import StoreComponent, TierComponent, StoreComponents, TierComponents
 
 

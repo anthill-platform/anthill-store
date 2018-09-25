@@ -1,18 +1,14 @@
-# coding=utf-8
+from anthill.common.validate import validate
 
-from tornado.gen import coroutine, Return
+import anthill.common.admin as a
+from anthill import common
 
-from common.validate import validate
-
-import common.admin as a
-import common
-
-from model.store import StoreError, StoreNotFound, StoreComponentNotFound
-from model.category import CategoryError, CategoryNotFound, CategoryModel
-from model.item import ItemError, ItemNotFound
-from model.tier import TierModel, TierError, TierNotFound, CurrencyError, CurrencyNotFound
-from model.order import OrderQueryError, OrdersModel
-from model.campaign import CampaignError, CampaignNotFound, CampaignItemNotFound
+from .. model.store import StoreError, StoreNotFound, StoreComponentNotFound
+from .. model.category import CategoryError, CategoryNotFound, CategoryModel
+from .. model.item import ItemError, ItemNotFound
+from .. model.tier import TierModel, TierError, TierNotFound, CurrencyError, CurrencyNotFound
+from .. model.order import OrderQueryError, OrdersModel
+from ..model.campaign import CampaignError, CampaignNotFound, CampaignItemNotFound
 
 import math
 import datetime
@@ -73,13 +69,13 @@ class TierComponentAdmin(object):
             "product": self.component.product
         }
 
-    @coroutine
-    def init(self):
+    async def init(self):
         pass
 
     def load(self, data):
         self.component.load(data)
 
+    # noinspection PyMethodMayBeStatic
     def render(self):
         return {
             "product": a.field("Product ID", "text", "primary", "non-empty")
@@ -89,6 +85,7 @@ class TierComponentAdmin(object):
         self.component.product = product
 
 
+# noinspection PyMethodMayBeStatic
 class StoreComponentAdmin(object):
     def __init__(self, name, action, store_id, store_component_class):
         self.action = action
@@ -107,8 +104,7 @@ class StoreComponentAdmin(object):
     def get_hook_url(self, app, gamespace_id, store_name, component_name):
         return app.get_host() + "/hook/" + gamespace_id + "/" + store_name + "/" + component_name
 
-    @coroutine
-    def init(self):
+    async def init(self):
         pass
 
     def icon(self):
@@ -127,16 +123,15 @@ class StoreComponentAdmin(object):
 
 
 class CategoriesController(a.AdminController):
-    @coroutine
-    def get(self):
+    async def get(self):
         categories = self.application.categories
-        items = yield categories.list_categories(self.gamespace)
+        items = await categories.list_categories(self.gamespace)
 
         result = {
             "items": items
         }
 
-        raise a.Return(result)
+        return result
 
     def render(self, data):
         return [
@@ -157,13 +152,12 @@ class CategoriesController(a.AdminController):
 
 
 class CategoryCommonController(a.AdminController):
-    @coroutine
-    def get(self):
+    async def get(self):
 
         categories = self.application.categories
 
         try:
-            common_scheme = yield categories.get_common_scheme(self.gamespace)
+            common_scheme = await categories.get_common_scheme(self.gamespace)
             public_item_scheme = common_scheme.public_item_scheme or CategoryModel.DEFAULT_PUBLIC_SCHEME
             private_item_scheme = common_scheme.private_item_scheme or CategoryModel.DEFAULT_PRIVATE_SCHEME
         except CategoryNotFound:
@@ -175,7 +169,7 @@ class CategoryCommonController(a.AdminController):
             "private_item_scheme": private_item_scheme
         }
 
-        raise a.Return(result)
+        return result
 
     def render(self, data):
         return [
@@ -197,14 +191,13 @@ class CategoryCommonController(a.AdminController):
     def access_scopes(self):
         return ["store_admin"]
 
-    @coroutine
     @validate(public_item_scheme="load_json_dict", private_item_scheme="load_json_dict")
-    def update(self, public_item_scheme, private_item_scheme):
+    async def update(self, public_item_scheme, private_item_scheme):
 
         categories = self.application.categories
 
         try:
-            yield categories.update_common_scheme(self.gamespace, public_item_scheme, private_item_scheme)
+            await categories.update_common_scheme(self.gamespace, public_item_scheme, private_item_scheme)
         except CategoryError as e:
             raise a.ActionError("Failed to update common scheme: " + e.args[0])
 
@@ -212,14 +205,13 @@ class CategoryCommonController(a.AdminController):
 
 
 class CategoryController(a.AdminController):
-    @coroutine
-    def delete(self, **ignored):
+    async def delete(self, **ignored):
 
         category_id = self.context.get("category_id")
         categories = self.application.categories
 
         try:
-            yield categories.delete_category(self.gamespace, category_id)
+            await categories.delete_category(self.gamespace, category_id)
         except CategoryError as e:
             raise a.ActionError("Failed to delete category: " + e.args[0])
 
@@ -227,14 +219,13 @@ class CategoryController(a.AdminController):
             "categories",
             message="Category has been deleted")
 
-    @coroutine
     @validate(category_id="int")
-    def get(self, category_id):
+    async def get(self, category_id):
 
         categories = self.application.categories
 
         try:
-            category = yield categories.get_category(self.gamespace, category_id)
+            category = await categories.get_category(self.gamespace, category_id)
         except CategoryNotFound:
             raise a.ActionError("No such category")
 
@@ -244,7 +235,7 @@ class CategoryController(a.AdminController):
             "category_private_item_scheme": category.private_item_scheme
         }
 
-        raise a.Return(result)
+        return result
 
     def render(self, data):
         return [
@@ -271,16 +262,15 @@ class CategoryController(a.AdminController):
     def access_scopes(self):
         return ["store_admin"]
 
-    @coroutine
     @validate(category_name="str_name", category_public_item_scheme="load_json_dict",
               category_private_item_scheme="load_json_dict")
-    def update(self, category_name, category_public_item_scheme, category_private_item_scheme):
+    async def update(self, category_name, category_public_item_scheme, category_private_item_scheme):
 
         category_id = self.context.get("category_id")
         categories = self.application.categories
 
         try:
-            yield categories.update_category(self.gamespace, category_id, category_name,
+            await categories.update_category(self.gamespace, category_id, category_name,
                                              category_public_item_scheme, category_private_item_scheme)
         except CategoryError as e:
             raise a.ActionError("Failed to update category: " + e.args[0])
@@ -292,30 +282,28 @@ class CategoryController(a.AdminController):
 
 
 class ChooseCategoryController(a.AdminController):
-    @coroutine
     @validate(category="int")
-    def apply(self, category):
+    async def apply(self, category):
         raise a.Redirect(
             "new_item",
             store_id=self.context.get("store_id"),
             category_id=category)
 
-    @coroutine
     @validate(store_id="int")
-    def get(self, store_id):
-        categories = yield self.application.categories.list_categories(self.gamespace)
+    async def get(self, store_id):
+        categories = await self.application.categories.list_categories(self.gamespace)
 
         try:
-            store = yield self.application.stores.get_store(self.gamespace, store_id)
+            store = await self.application.stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        raise Return({
+        return {
             "store_name": store.name,
             "categories": {
                 category.category_id: category.name for category in categories
             }
-        })
+        }
 
     def render(self, data):
         return [
@@ -344,16 +332,15 @@ class ChooseCategoryController(a.AdminController):
 
 
 class CurrenciesController(a.AdminController):
-    @coroutine
-    def get(self):
+    async def get(self):
         currencies = self.application.currencies
-        items = yield currencies.list_currencies(self.gamespace)
+        items = await currencies.list_currencies(self.gamespace)
 
         result = {
             "items": items
         }
 
-        raise a.Return(result)
+        return result
 
     def render(self, data):
         return [
@@ -374,27 +361,25 @@ class CurrenciesController(a.AdminController):
 
 
 class CurrencyController(a.AdminController):
-    @coroutine
-    def delete(self, **ignored):
+    async def delete(self, **ignored):
 
         currency_id = self.context.get("currency_id")
         currencies = self.application.currencies
 
         try:
-            yield currencies.delete_currency(self.gamespace, currency_id)
+            await currencies.delete_currency(self.gamespace, currency_id)
         except CurrencyError as e:
             raise a.ActionError("Failed to delete currency: " + e.args[0])
 
         raise a.Redirect("currencies", message="Currency has been deleted")
 
-    @coroutine
     @validate(currency_id="int")
-    def get(self, currency_id):
+    async def get(self, currency_id):
 
         currencies = self.application.currencies
 
         try:
-            currency = yield currencies.get_currency(self.gamespace, currency_id)
+            currency = await currencies.get_currency(self.gamespace, currency_id)
         except CurrencyNotFound:
             raise a.ActionError("No such currency")
 
@@ -406,7 +391,7 @@ class CurrencyController(a.AdminController):
             "currency_label": currency.label
         }
 
-        raise a.Return(result)
+        return result
 
     def render(self, data):
         return [
@@ -431,17 +416,16 @@ class CurrencyController(a.AdminController):
     def access_scopes(self):
         return ["store_admin"]
 
-    @coroutine
     @validate(currency_name="str_name", currency_title="str", currency_format="str",
               currency_symbol="str", currency_label="str")
-    def update(self, currency_name, currency_title, currency_format, currency_symbol, currency_label):
+    async def update(self, currency_name, currency_title, currency_format, currency_symbol, currency_label):
 
         currency_id = self.context.get("currency_id")
 
         currencies = self.application.currencies
 
         try:
-            yield currencies.update_currency(self.gamespace, currency_id, currency_name, currency_title,
+            await currencies.update_currency(self.gamespace, currency_id, currency_name, currency_title,
                                              currency_format, currency_symbol, currency_label)
         except CurrencyError as e:
             raise a.ActionError("Failed to update currency: " + e.args[0])
@@ -453,15 +437,14 @@ class CurrencyController(a.AdminController):
 
 
 class NewCategoryController(a.AdminController):
-    @coroutine
     @validate(category_name="str_name",
               category_public_item_scheme="load_json_dict",
               category_private_item_scheme="load_json_dict")
-    def create(self, category_name, category_public_item_scheme, category_private_item_scheme):
+    async def create(self, category_name, category_public_item_scheme, category_private_item_scheme):
         categories = self.application.categories
 
         try:
-            category_id = yield categories.new_category(self.gamespace, category_name,
+            category_id = await categories.new_category(self.gamespace, category_name,
                                                         category_public_item_scheme,
                                                         category_private_item_scheme)
         except CategoryError as e:
@@ -492,38 +475,36 @@ class NewCategoryController(a.AdminController):
             ])
         ]
 
-    @coroutine
-    def get(self):
+    async def get(self):
 
         categories = self.application.categories
 
         try:
-            common_scheme = yield categories.get_common_scheme(self.gamespace)
+            common_scheme = await categories.get_common_scheme(self.gamespace)
             public_item_scheme = common_scheme.public_item_scheme or CategoryModel.DEFAULT_PUBLIC_SCHEME
             private_item_scheme = common_scheme.private_item_scheme or CategoryModel.DEFAULT_PRIVATE_SCHEME
         except CategoryNotFound:
             public_item_scheme = CategoryModel.DEFAULT_PUBLIC_SCHEME
             private_item_scheme = CategoryModel.DEFAULT_PRIVATE_SCHEME
 
-        raise Return({
+        return {
             "category_public_item_scheme": public_item_scheme,
             "category_private_item_scheme": private_item_scheme
-        })
+        }
 
     def access_scopes(self):
         return ["store_admin"]
 
 
 class NewCurrencyController(a.AdminController):
-    @coroutine
     @validate(currency_name="str_name", currency_title="str", currency_format="str",
               currency_symbol="str", currency_label="str")
-    def create(self, currency_name, currency_title, currency_format, currency_symbol, currency_label):
+    async def create(self, currency_name, currency_title, currency_format, currency_symbol, currency_label):
 
         currencies = self.application.currencies
 
         try:
-            currency_id = yield currencies.new_currency(self.gamespace, currency_name, currency_title,
+            currency_id = await currencies.new_currency(self.gamespace, currency_name, currency_title,
                                                         currency_format, currency_symbol, currency_label)
         except CurrencyError as e:
             raise a.ActionError("Failed to create new currency: " + e.args[0])
@@ -557,8 +538,7 @@ class NewCurrencyController(a.AdminController):
 
 
 class NewTierComponentController(a.AdminController):
-    @coroutine
-    def create_component(self, **args):
+    async def create_component(self, **args):
         tiers = self.application.tiers
 
         component_name = self.context.get("component")
@@ -567,62 +547,60 @@ class NewTierComponentController(a.AdminController):
         if not TierAdminComponents.has_component(component_name):
             raise a.ActionError("Component '{0}' is not supported.")
 
-        component_admin = yield self.get_component(component_name, tier_id)
+        component_admin = await self.get_component(component_name, tier_id)
         component_admin.update(**args)
         component_data = component_admin.dump()
 
         try:
-            yield tiers.new_tier_component(self.gamespace, tier_id, component_name, component_data)
+            await tiers.new_tier_component(self.gamespace, tier_id, component_name, component_data)
         except StoreError as e:
-            raise a.ActionError("Failed to create store component: " + e.message)
+            raise a.ActionError("Failed to create store component: " + str(e))
 
         raise a.Redirect(
             "tier",
             message="Component has been created",
             tier_id=tier_id)
 
-    @coroutine
     @validate(tier_id="int")
-    def get(self, tier_id):
+    async def get(self, tier_id):
         stores = self.application.stores
         tiers = self.application.tiers
 
         try:
-            tier = yield tiers.get_tier(self.gamespace, tier_id)
+            tier = await tiers.get_tier(self.gamespace, tier_id)
         except StoreNotFound:
             raise a.ActionError("No such tier")
 
         try:
-            store = yield stores.get_store(self.gamespace, tier.store_id)
+            store = await stores.get_store(self.gamespace, tier.store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            existent_components = yield tiers.list_tier_components(self.gamespace, tier_id)
+            existent_components = await tiers.list_tier_components(self.gamespace, tier_id)
         except StoreError as e:
-            raise a.ActionError("Failed to get tier components: " + e.message)
+            raise a.ActionError("Failed to get tier components: " + str(e))
         else:
             existent_components = set(component.name for component in existent_components)
 
         new_components = set(TierAdminComponents.components())
         components = list(new_components - existent_components)
 
-        raise Return({
+        return {
             "components": {component: component for component in components},
             "store_name": store.name,
             "tier_name": tier.name
-        })
+        }
 
-    @coroutine
-    def get_component(self, component, tier_id):
+    async def get_component(self, component, tier_id):
         try:
             component_instance = TierAdminComponents.component(component, self, tier_id)
         except KeyError:
             raise a.ActionError("No such tier component")
 
-        yield component_instance.init()
+        await component_instance.init()
 
-        raise a.Return(component_instance)
+        return component_instance
 
     def render(self, data):
 
@@ -672,36 +650,34 @@ class NewTierComponentController(a.AdminController):
     def access_scopes(self):
         return ["store_admin"]
 
-    @coroutine
     @validate(component="str_name")
-    def select(self, component):
+    async def select(self, component):
         stores = self.application.stores
         tiers = self.application.tiers
 
         tier_id = self.context.get("tier_id")
 
         try:
-            tier = yield tiers.get_tier(self.gamespace, tier_id)
+            tier = await tiers.get_tier(self.gamespace, tier_id)
         except StoreNotFound:
             raise a.ActionError("No such tier")
 
         try:
-            store = yield stores.get_store(self.gamespace, tier.store_id)
+            store = await stores.get_store(self.gamespace, tier.store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        component = yield self.get_component(component, tier_id)
+        component = await self.get_component(component, tier_id)
 
-        raise Return({
+        return {
             "store_name": store.name,
             "tier_name": tier.name,
             "component": component
-        })
+        }
 
 
 class NewStoreComponentController(a.AdminController):
-    @coroutine
-    def create_component(self, **args):
+    async def create_component(self, **args):
         stores = self.application.stores
 
         component_name = self.context.get("component")
@@ -710,33 +686,32 @@ class NewStoreComponentController(a.AdminController):
         if not StoreAdminComponents.has_component(component_name):
             raise a.ActionError("Component '{0}' is not supported.")
 
-        component_admin = yield self.get_component(component_name, store_id)
+        component_admin = await self.get_component(component_name, store_id)
         component_admin.update(**args)
         component_data = component_admin.dump()
 
         try:
-            yield stores.new_store_component(self.gamespace, store_id, component_name, component_data)
+            await stores.new_store_component(self.gamespace, store_id, component_name, component_data)
         except StoreError as e:
-            raise a.ActionError("Failed to create store component: " + e.message)
+            raise a.ActionError("Failed to create store component: " + str(e))
 
         raise a.Redirect(
             "store_settings",
             message="New component has been created",
             store_id=store_id)
 
-    @coroutine
     @validate(store_id="int")
-    def get(self, store_id):
+    async def get(self, store_id):
 
         stores = self.application.stores
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            existent_components = yield stores.list_store_components(self.gamespace, store_id)
+            existent_components = await stores.list_store_components(self.gamespace, store_id)
         except StoreError as e:
             raise a.ActionError("Failed to get store components: " + e.message)
         else:
@@ -745,21 +720,20 @@ class NewStoreComponentController(a.AdminController):
         new_components = set(StoreAdminComponents.components())
         components = list(new_components - existent_components)
 
-        raise Return({
+        return {
             "components": {component: component for component in components},
             "store_name": store.name
-        })
+        }
 
-    @coroutine
-    def get_component(self, component, store_id):
+    async def get_component(self, component, store_id):
         try:
             component_instance = StoreAdminComponents.component(component, self, store_id)
         except KeyError:
             raise a.ActionError("No such store component")
 
-        yield component_instance.init()
+        await component_instance.init()
 
-        raise a.Return(component_instance)
+        return component_instance
 
     def render(self, data):
 
@@ -807,34 +781,32 @@ class NewStoreComponentController(a.AdminController):
     def access_scopes(self):
         return ["store_admin"]
 
-    @coroutine
     @validate(component="str_name")
-    def select(self, component):
+    async def select(self, component):
 
         stores = self.application.stores
         store_id = self.context.get("store_id")
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        component = yield self.get_component(component, store_id)
+        component = await self.get_component(component, store_id)
 
-        raise Return({
+        return {
             "store_name": store.name,
             "component": component
-        })
+        }
 
 
 class NewStoreController(a.AdminController):
-    @coroutine
     @validate(store_name="str_name")
-    def create(self, store_name):
+    async def create(self, store_name):
         stores = self.application.stores
 
         try:
-            store_id = yield stores.new_store(self.gamespace, store_name, {})
+            store_id = await stores.new_store(self.gamespace, store_name, {})
         except StoreError as e:
             raise a.ActionError("Failed to create new store: " + e.args[0])
 
@@ -863,10 +835,10 @@ class NewStoreController(a.AdminController):
 
 
 class NewStoreItemController(a.AdminController):
-    @coroutine
     @validate(item_name="str_name", item_enabled="bool", tier_id="int",
               item_public_data="load_json", item_private_data="load_json")
-    def create(self, item_name, item_public_data, item_private_data, item_tier, item_enabled=False, **method_data):
+    async def create(self, item_name, item_public_data, item_private_data,
+                     item_tier, item_enabled=False, **method_data):
         items = self.application.items
         stores = self.application.stores
         tiers = self.application.tiers
@@ -875,12 +847,12 @@ class NewStoreItemController(a.AdminController):
         category_id = self.context.get("category_id")
 
         try:
-            yield stores.get_store(self.gamespace, store_id)
+            await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            tier = yield tiers.get_tier(self.gamespace, item_tier)
+            tier = await tiers.get_tier(self.gamespace, item_tier)
         except TierNotFound:
             raise a.ActionError("No such tier")
         else:
@@ -888,7 +860,7 @@ class NewStoreItemController(a.AdminController):
                 raise a.ActionError("Bad tier")
 
         try:
-            item_id = yield items.new_item(
+            item_id = await items.new_item(
                 self.gamespace, store_id, category_id, item_name,
                 item_enabled, item_public_data, item_private_data, item_tier)
         except ItemError as e:
@@ -899,9 +871,8 @@ class NewStoreItemController(a.AdminController):
             message="New item has been created",
             item_id=item_id)
 
-    @coroutine
     @validate(store_id="int", category_id="int", clone="int")
-    def get(self, store_id, category_id, clone=None):
+    async def get(self, store_id, category_id, clone=None):
 
         stores = self.application.stores
         categories = self.application.categories
@@ -909,15 +880,15 @@ class NewStoreItemController(a.AdminController):
         tiers = self.application.tiers
 
         try:
-            yield stores.get_store(self.gamespace, store_id)
+            await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        tiers_list = yield tiers.list_tiers(self.gamespace, store_id)
+        tiers_list = await tiers.list_tiers(self.gamespace, store_id)
 
         if clone:
             try:
-                item = yield items.get_item(self.gamespace, clone)
+                item = await items.get_item(self.gamespace, clone)
             except ItemNotFound:
                 raise a.ActionError("No item to clone from")
             except ItemError as e:
@@ -936,17 +907,17 @@ class NewStoreItemController(a.AdminController):
             item_enabled = True
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            category = yield categories.get_category(self.gamespace, category_id)
+            category = await categories.get_category(self.gamespace, category_id)
         except CategoryNotFound:
             raise a.ActionError("No such category")
 
         try:
-            common_scheme = yield categories.get_common_scheme(self.gamespace)
+            common_scheme = await categories.get_common_scheme(self.gamespace)
         except CategoryNotFound:
             common_public_item_scheme = {}
             common_private_item_scheme = {}
@@ -973,7 +944,7 @@ class NewStoreItemController(a.AdminController):
             "item_enabled": "true" if item_enabled else "false"
         }
 
-        raise a.Return(data)
+        return data
 
     def render(self, data):
         return [
@@ -1012,15 +983,14 @@ class NewStoreItemController(a.AdminController):
 
 
 class NewStoreTierController(a.AdminController):
-    @coroutine
     @validate(tier_name="str_name", tier_title="str", tier_product="str", tier_prices="load_json_dict_of_ints")
-    def create(self, tier_name, tier_title, tier_product, tier_prices):
+    async def create(self, tier_name, tier_title, tier_product, tier_prices):
 
         tiers = self.application.tiers
         store_id = self.context.get("store_id")
 
         try:
-            tier_id = yield tiers.new_tier(self.gamespace, store_id, tier_name, tier_title, tier_product, tier_prices)
+            tier_id = await tiers.new_tier(self.gamespace, store_id, tier_name, tier_title, tier_product, tier_prices)
         except StoreError as e:
             raise a.ActionError("Failed to create new tier: " + e.args[0])
 
@@ -1029,21 +999,20 @@ class NewStoreTierController(a.AdminController):
             message="New tier has been created",
             tier_id=tier_id)
 
-    @coroutine
     @validate(store_id="int")
-    def get(self, store_id):
+    async def get(self, store_id):
 
         stores = self.application.stores
         currencies = self.application.currencies
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         raise a.Return({
             "store_name": store.name,
-            "currencies": (yield currencies.list_currencies(self.gamespace)),
+            "currencies": (await currencies.list_currencies(self.gamespace)),
             "tier_prices": {}
         })
 
@@ -1097,26 +1066,25 @@ class RootAdminController(a.AdminController):
 
 
 class StoreController(a.AdminController):
-    @coroutine
     @validate(store_id="int")
-    def get(self, store_id):
+    async def get(self, store_id):
 
         stores = self.application.stores
         items = self.application.items
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        items = yield items.list_items(self.gamespace, store_id)
+        items = await items.list_items(self.gamespace, store_id)
 
         result = {
             "items": items,
             "store_name": store.name
         }
 
-        raise a.Return(result)
+        return result
 
     def render(self, data):
         return [
@@ -1149,23 +1117,25 @@ class StoreController(a.AdminController):
                     "title": "Actions"
                 }
             ], [
-                {
-                    "name": [a.link("item", entry.item.name, icon="shopping-bag", item_id=entry.item.item_id)],
-                    "category": [
-                    a.link(
-                        "category", entry.category.name,
-                        icon="list-alt", category_id=entry.category.category_id)
-                    ],
-                    "tier": [a.link("tier", entry.tier.title, tier_id=entry.tier.tier_id)],
-                    "title": entry.item.title("EN"),
-                    "enabled": [
-                        a.status("Yes" if entry.item.enabled else "No",
-                                 "success" if entry.item.enabled else "danger")
-                    ],
-                    "actions": [a.button("item", "Delete", "danger", _method="delete", item_id=entry.item.item_id)]
-                }
-                for entry in data["items"]
-            ], "default"),
+                          {
+                              "name": [
+                                  a.link("item", entry.item.name, icon="shopping-bag", item_id=entry.item.item_id)],
+                              "category": [
+                                  a.link(
+                                      "category", entry.category.name,
+                                      icon="list-alt", category_id=entry.category.category_id)
+                              ],
+                              "tier": [a.link("tier", entry.tier.title, tier_id=entry.tier.tier_id)],
+                              "title": entry.item.title("EN"),
+                              "enabled": [
+                                  a.status("Yes" if entry.item.enabled else "No",
+                                           "success" if entry.item.enabled else "danger")
+                              ],
+                              "actions": [
+                                  a.button("item", "Delete", "danger", _method="delete", item_id=entry.item.item_id)]
+                          }
+                          for entry in data["items"]
+                      ], "default"),
 
             a.links("Navigate", [
                 a.link("stores", "Go back", icon="chevron-left"),
@@ -1182,21 +1152,20 @@ class StoreController(a.AdminController):
 
 
 class StoreItemController(a.AdminController):
-    @coroutine
-    def delete(self, **ignored):
+    async def delete(self, **ignored):
         items = self.application.items
 
         item_id = self.context.get("item_id")
 
         try:
-            item = yield items.get_item(self.gamespace, item_id)
+            item = await items.get_item(self.gamespace, item_id)
         except ItemNotFound:
             raise a.ActionError("No such item")
 
         store_id = item.store_id
 
         try:
-            yield items.delete_item(self.gamespace, item_id)
+            await items.delete_item(self.gamespace, item_id)
         except ItemError as e:
             raise a.ActionError("Failed to delete item: " + e.message)
 
@@ -1205,9 +1174,8 @@ class StoreItemController(a.AdminController):
             message="Item has been deleted",
             store_id=store_id)
 
-    @coroutine
     @validate(item_id="int")
-    def get(self, item_id):
+    async def get(self, item_id):
 
         stores = self.application.stores
         items = self.application.items
@@ -1215,7 +1183,7 @@ class StoreItemController(a.AdminController):
         tiers = self.application.tiers
 
         try:
-            item = yield items.get_item(self.gamespace, item_id)
+            item = await items.get_item(self.gamespace, item_id)
         except ItemNotFound:
             raise a.ActionError("No such item")
 
@@ -1223,19 +1191,19 @@ class StoreItemController(a.AdminController):
         category_id = item.category
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        tiers_list = yield tiers.list_tiers(self.gamespace, store_id)
+        tiers_list = await tiers.list_tiers(self.gamespace, store_id)
 
         try:
-            category = yield categories.get_category(self.gamespace, category_id)
+            category = await categories.get_category(self.gamespace, category_id)
         except CategoryNotFound:
             raise a.ActionError("No such category")
 
         try:
-            common_scheme = yield categories.get_common_scheme(self.gamespace)
+            common_scheme = await categories.get_common_scheme(self.gamespace)
         except CategoryNotFound:
             common_public_item_scheme = {}
             common_private_item_scheme = {}
@@ -1307,22 +1275,21 @@ class StoreItemController(a.AdminController):
     def access_scopes(self):
         return ["store_admin"]
 
-    @coroutine
     @validate(item_name="str_name", item_enabled="bool", item_public_data="load_json",
               item_private_data="load_json", item_tier="int")
-    def update(self, item_name, item_public_data, item_private_data, item_tier, item_enabled=False, **ignored):
+    async def update(self, item_name, item_public_data, item_private_data, item_tier, item_enabled=False, **ignored):
         items = self.application.items
         tiers = self.application.tiers
 
         item_id = self.context.get("item_id")
 
         try:
-            item = yield items.get_item(self.gamespace, item_id)
+            item = await items.get_item(self.gamespace, item_id)
         except ItemNotFound:
             raise a.ActionError("No such item")
 
         try:
-            tier = yield tiers.get_tier(self.gamespace, item_tier)
+            tier = await tiers.get_tier(self.gamespace, item_tier)
         except TierNotFound:
             raise a.ActionError("No such tier")
         else:
@@ -1330,7 +1297,7 @@ class StoreItemController(a.AdminController):
                 raise a.ActionError("Bad tier")
 
         try:
-            yield items.update_item(self.gamespace, item_id,
+            await items.update_item(self.gamespace, item_id,
                                     item_name, item_enabled, item_public_data,
                                     item_private_data, item_tier)
         except ItemError as e:
@@ -1343,15 +1310,14 @@ class StoreItemController(a.AdminController):
 
 
 class StoreTierController(a.AdminController):
-    @coroutine
-    def change_component(self, **args):
+    async def change_component(self, **args):
         tiers = self.application.tiers
 
         component_id = self.context.get("component_id")
         tier_id = self.context.get("tier_id")
 
         try:
-            component = yield tiers.get_tier_component(self.gamespace, tier_id, component_id)
+            component = await tiers.get_tier_component(self.gamespace, tier_id, component_id)
         except StoreComponentNotFound as e:
             raise a.ActionError("No such tier component")
 
@@ -1360,12 +1326,12 @@ class StoreTierController(a.AdminController):
         if not TierAdminComponents.has_component(name):
             raise a.ActionError("Component '{0}' is not supported.")
 
-        component_admin = yield self.get_component(name, tier_id)
+        component_admin = await self.get_component(name, tier_id)
         component_admin.update(**args)
         component_data = component_admin.dump()
 
         try:
-            yield tiers.update_tier_component(self.gamespace, tier_id, component_id, component_data)
+            await tiers.update_tier_component(self.gamespace, tier_id, component_id, component_data)
         except StoreError as e:
             raise a.ActionError("Failed to update tier component: " + e.message)
 
@@ -1374,21 +1340,20 @@ class StoreTierController(a.AdminController):
             message="Component has been updated",
             tier_id=tier_id)
 
-    @coroutine
-    def delete(self, **ignore):
+    async def delete(self, **ignore):
 
         tiers = self.application.tiers
         tier_id = self.context.get("tier_id")
 
         try:
-            tier = yield tiers.get_tier(self.gamespace, tier_id)
+            tier = await tiers.get_tier(self.gamespace, tier_id)
         except TierNotFound:
             raise a.ActionError("Tier not found")
 
         store_id = tier.store_id
 
         try:
-            yield tiers.delete_tier(self.gamespace, tier_id)
+            await tiers.delete_tier(self.gamespace, tier_id)
         except StoreError as e:
             raise a.ActionError("Failed to delete tier: " + e.args[0])
 
@@ -1397,15 +1362,14 @@ class StoreTierController(a.AdminController):
             message="Tier has been deleted",
             store_id=store_id)
 
-    @coroutine
-    def delete_component(self, **args):
+    async def delete_component(self, **args):
         tiers = self.application.tiers
 
         component_id = self.context.get("component_id")
         tier_id = self.context.get("tier_id")
 
         try:
-            yield tiers.delete_tier_component(self.gamespace, tier_id, component_id)
+            await tiers.delete_tier_component(self.gamespace, tier_id, component_id)
         except StoreError as e:
             raise a.ActionError("Failed to delete tier component: " + e.message)
 
@@ -1414,28 +1378,27 @@ class StoreTierController(a.AdminController):
             message="Component has been deleted",
             tier_id=tier_id)
 
-    @coroutine
     @validate(tier_id="int")
-    def get(self, tier_id):
+    async def get(self, tier_id):
 
         stores = self.application.stores
         currencies = self.application.currencies
         tiers = self.application.tiers
 
         try:
-            tier = yield tiers.get_tier(self.gamespace, tier_id)
+            tier = await tiers.get_tier(self.gamespace, tier_id)
         except TierNotFound:
             raise a.ActionError("Tier not found")
 
         store_id = tier.store_id
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            tier_components = yield tiers.list_tier_components(self.gamespace, tier_id)
+            tier_components = await tiers.list_tier_components(self.gamespace, tier_id)
         except StoreError as e:
             raise a.ActionError("Failed to get store components: " + e.message)
 
@@ -1443,14 +1406,14 @@ class StoreTierController(a.AdminController):
 
         for component in tier_components:
             if StoreAdminComponents.has_component(component.name):
-                component_admin = yield self.get_component(component.name, tier_id)
+                component_admin = await self.get_component(component.name, tier_id)
                 component_admin.load(component.data)
                 components[component.component_id] = component_admin
 
         raise a.Return({
             "store_name": store.name,
             "store_id": store_id,
-            "currencies": (yield currencies.list_currencies(self.gamespace)),
+            "currencies": (await currencies.list_currencies(self.gamespace)),
             "tier_prices": tier.prices,
             "tier_name": tier.name,
             "tier_title": tier.title,
@@ -1458,16 +1421,15 @@ class StoreTierController(a.AdminController):
             "components": components
         })
 
-    @coroutine
-    def get_component(self, component, tier_id):
+    async def get_component(self, component, tier_id):
         try:
             component_instance = TierAdminComponents.component(component, self, tier_id)
         except KeyError:
             raise a.ActionError("No such tier component")
 
-        yield component_instance.init()
+        await component_instance.init()
 
-        raise a.Return(component_instance)
+        return component_instance
 
     def render(self, data):
         result = [
@@ -1497,7 +1459,7 @@ class StoreTierController(a.AdminController):
             }, data=data)
         ]
 
-        for component_id, component in data["components"].iteritems():
+        for component_id, component in data["components"].items():
             result.append(a.form(component.name, fields=component.render(), methods={
                 "change_component": a.method("Update component", "primary"),
                 "delete_component": a.method("Delete component", "danger")
@@ -1517,15 +1479,14 @@ class StoreTierController(a.AdminController):
     def access_scopes(self):
         return ["store_admin"]
 
-    @coroutine
     @validate(tier_name="str_name", tier_title="str", tier_product="str", tier_prices="load_json_dict_of_ints")
-    def update(self, tier_name, tier_title, tier_product, tier_prices):
+    async def update(self, tier_name, tier_title, tier_product, tier_prices):
 
         tiers = self.application.tiers
         tier_id = self.context.get("tier_id")
 
         try:
-            yield tiers.update_tier(self.gamespace, tier_id, tier_name, tier_title, tier_product, tier_prices)
+            await tiers.update_tier(self.gamespace, tier_id, tier_name, tier_title, tier_product, tier_prices)
         except StoreError as e:
             raise a.ActionError("Failed to update tier: " + e.args[0])
 
@@ -1536,26 +1497,25 @@ class StoreTierController(a.AdminController):
 
 
 class StoreTiersController(a.AdminController):
-    @coroutine
     @validate(store_id="int")
-    def get(self, store_id):
+    async def get(self, store_id):
 
         stores = self.application.stores
         tiers = self.application.tiers
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        tiers = yield tiers.list_tiers(self.gamespace, store_id)
+        tiers = await tiers.list_tiers(self.gamespace, store_id)
 
         result = {
             "tiers": tiers,
             "store_name": store.name
         }
 
-        raise a.Return(result)
+        return result
 
     def render(self, data):
         return [
@@ -1598,15 +1558,14 @@ class StoreTiersController(a.AdminController):
 
 
 class StoreSettingsController(a.AdminController):
-    @coroutine
-    def change_component(self, **args):
+    async def change_component(self, **args):
         stores = self.application.stores
 
         component_id = self.context.get("component_id")
         store_id = self.context.get("store_id")
 
         try:
-            component = yield stores.get_store_component(self.gamespace, store_id, component_id)
+            component = await stores.get_store_component(self.gamespace, store_id, component_id)
         except StoreComponentNotFound:
             raise a.ActionError("No such store component")
 
@@ -1615,12 +1574,12 @@ class StoreSettingsController(a.AdminController):
         if not StoreAdminComponents.has_component(name):
             raise a.ActionError("Component '{0}' is not supported.")
 
-        component_admin = yield self.get_component(name, store_id)
+        component_admin = await self.get_component(name, store_id)
         component_admin.update(**args)
         component_data = component_admin.dump()
 
         try:
-            yield stores.update_store_component(self.gamespace, store_id, component_id, component_data)
+            await stores.update_store_component(self.gamespace, store_id, component_id, component_data)
         except StoreError as e:
             raise a.ActionError("Failed to update store component: " + e.message)
 
@@ -1629,8 +1588,7 @@ class StoreSettingsController(a.AdminController):
             message="Component has been updated",
             store_id=store_id)
 
-    @coroutine
-    def delete(self, danger):
+    async def delete(self, danger):
         store_id = self.context.get("store_id")
         stores = self.application.stores
 
@@ -1638,21 +1596,20 @@ class StoreSettingsController(a.AdminController):
             raise a.Redirect("store_settings", store_id=store_id)
 
         try:
-            yield stores.delete_store(self.gamespace, store_id)
+            await stores.delete_store(self.gamespace, store_id)
         except StoreError as e:
             raise a.ActionError("Failed to delete store: " + e.args[0])
 
         raise a.Redirect("stores", message="Store has been deleted")
 
-    @coroutine
-    def delete_component(self, **args):
+    async def delete_component(self, **args):
         stores = self.application.stores
 
         component_id = self.context.get("component_id")
         store_id = self.context.get("store_id")
 
         try:
-            yield stores.delete_store_component(self.gamespace, store_id, component_id)
+            await stores.delete_store_component(self.gamespace, store_id, component_id)
         except StoreError as e:
             raise a.ActionError("Failed to delete store component: " + e.message)
 
@@ -1661,19 +1618,18 @@ class StoreSettingsController(a.AdminController):
             message="Component has been deleted",
             store_id=store_id)
 
-    @coroutine
     @validate(store_id="int")
-    def get(self, store_id):
+    async def get(self, store_id):
 
         stores = self.application.stores
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            store_components = yield stores.list_store_components(self.gamespace, store_id)
+            store_components = await stores.list_store_components(self.gamespace, store_id)
         except StoreError as e:
             raise a.ActionError("Failed to get store components: " + e.message)
 
@@ -1681,7 +1637,7 @@ class StoreSettingsController(a.AdminController):
 
         for component in store_components:
             if StoreAdminComponents.has_component(component.name):
-                component_admin = yield self.get_component(component.name, store_id)
+                component_admin = await self.get_component(component.name, store_id)
                 component_admin.load(component.data)
                 components[component.component_id] = component_admin
 
@@ -1691,16 +1647,15 @@ class StoreSettingsController(a.AdminController):
             "store_campaign_scheme": store.campaign_scheme or {}
         })
 
-    @coroutine
-    def get_component(self, component, store_id):
+    async def get_component(self, component, store_id):
         try:
             component_instance = StoreAdminComponents.component(component, self, store_id)
         except KeyError:
             raise a.ActionError("No such store component")
 
-        yield component_instance.init()
+        await component_instance.init()
 
-        raise a.Return(component_instance)
+        return component_instance
 
     def render(self, data):
         store_id = self.context.get("store_id")
@@ -1712,7 +1667,7 @@ class StoreSettingsController(a.AdminController):
             ], "Settings")
         ]
 
-        for component_id, component in data["store_components"].iteritems():
+        for component_id, component in data["store_components"].items():
             component_fields = component.render()
             component_data = component.get()
 
@@ -1756,15 +1711,14 @@ class StoreSettingsController(a.AdminController):
     def access_scopes(self):
         return ["store_admin"]
 
-    @coroutine
     @validate(store_name="str_name", store_campaign_scheme="load_json_dict")
-    def update(self, store_name, store_campaign_scheme):
+    async def update(self, store_name, store_campaign_scheme):
 
         store_id = self.context.get("store_id")
         stores = self.application.stores
 
         try:
-            yield stores.update_store(self.gamespace, store_id, store_name, store_campaign_scheme)
+            await stores.update_store(self.gamespace, store_id, store_name, store_campaign_scheme)
         except StoreError as e:
             raise a.ActionError("Failed to update store: " + e.args[0])
 
@@ -1775,15 +1729,14 @@ class StoreSettingsController(a.AdminController):
 
 
 class StoresController(a.AdminController):
-    @coroutine
-    def get(self):
-        stores = yield self.application.stores.list_stores(self.gamespace)
+    async def get(self):
+        stores = await self.application.stores.list_stores(self.gamespace)
 
         result = {
             "stores": stores
         }
 
-        raise a.Return(result)
+        return result
 
     def render(self, data):
         return [
@@ -1820,7 +1773,8 @@ class OrdersController(a.AdminController):
                 "account": order.order.account_id,
                 "amount": order.order.amount,
                 "campaign": [
-                    a.link("campaign", str(order.order.campaign_id), icon="percent", campaign_id=order.order.campaign_id)
+                    a.link("campaign", str(order.order.campaign_id), icon="percent",
+                           campaign_id=order.order.campaign_id)
                 ] if order.order.campaign_id else "No",
                 "total": str(order.order.total / 100) + " " + str(order.order.currency),
                 "status": [
@@ -1899,8 +1853,7 @@ class OrdersController(a.AdminController):
     def access_scopes(self):
         return ["store_admin"]
 
-    @coroutine
-    def filter(self, **args):
+    async def filter(self, **args):
 
         store_id = self.context.get("store_id")
         page = self.context.get("page", 1)
@@ -1910,24 +1863,23 @@ class OrdersController(a.AdminController):
         }
 
         filters.update({
-            k: v for k, v in args.iteritems() if v not in ["0", "any"]
+            k: v for k, v in args.items() if v not in ["0", "any"]
         })
 
         raise a.Redirect("orders", store_id=store_id, **filters)
 
-    @coroutine
     @validate(store_id="int", page="int", order_item="int", order_tier="int",
               order_account="int", order_status="str", order_currency="str",
               order_info="load_json_dict")
-    def get(self,
-            store_id,
-            page=1,
-            order_item=None,
-            order_tier=None,
-            order_account=None,
-            order_status=None,
-            order_currency=None,
-            order_info=None):
+    async def get(self,
+                  store_id,
+                  page=1,
+                  order_item=None,
+                  order_tier=None,
+                  order_account=None,
+                  order_status=None,
+                  order_currency=None,
+                  order_info=None):
 
         stores = self.application.stores
         items = self.application.items
@@ -1935,22 +1887,22 @@ class OrdersController(a.AdminController):
         currencies = self.application.currencies
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            store_items = yield items.list_items(self.gamespace, store_id)
+            store_items = await items.list_items(self.gamespace, store_id)
         except ItemError as e:
             raise a.ActionError("Failed to list store items: " + e.message)
 
         try:
-            store_tiers = yield tiers.list_tiers(self.gamespace, store_id)
+            store_tiers = await tiers.list_tiers(self.gamespace, store_id)
         except ItemError as e:
             raise a.ActionError("Failed to list store tiers: " + e.message)
 
         try:
-            currencies_list = yield currencies.list_currencies(self.gamespace)
+            currencies_list = await currencies.list_currencies(self.gamespace)
         except CurrencyError as e:
             raise a.ActionError("Failed to list currencies: " + e.message)
 
@@ -1976,7 +1928,7 @@ class OrdersController(a.AdminController):
         if order_info:
             q.info = order_info
 
-        orders, count = yield q.query(count=True)
+        orders, count = await q.query(count=True)
         pages = int(math.ceil(float(count) / float(OrdersController.ORDERS_PER_PAGE)))
 
         store_items = {
@@ -1997,7 +1949,7 @@ class OrdersController(a.AdminController):
         }
         currencies_list["any"] = "Any"
 
-        raise Return({
+        return {
             "orders": orders,
             "pages": pages,
             "order_item": order_item or "0",
@@ -2018,16 +1970,14 @@ class OrdersController(a.AdminController):
                 OrdersModel.STATUS_ERROR: "Error",
                 OrdersModel.STATUS_CREATED: "Created"
             }
-        })
+        }
 
 
 class StoreCampaignsController(a.AdminController):
-
     CAMPAIGNS_PER_PAGE = 20
 
-    @coroutine
     @validate(store_id="int")
-    def get(self, store_id, page=1):
+    async def get(self, store_id, page=1):
 
         stores = self.application.stores
         campaigns = self.application.campaigns
@@ -2036,11 +1986,12 @@ class StoreCampaignsController(a.AdminController):
         limit = StoreCampaignsController.CAMPAIGNS_PER_PAGE
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        campaigns_list, count = yield campaigns.list_campaigns_count(self.gamespace, store_id, offset=offset, limit=limit)
+        campaigns_list, count = await campaigns.list_campaigns_count(self.gamespace, store_id, offset=offset,
+                                                                     limit=limit)
 
         pages = int(math.ceil(float(count) / float(StoreCampaignsController.CAMPAIGNS_PER_PAGE)))
 
@@ -2050,7 +2001,7 @@ class StoreCampaignsController(a.AdminController):
             "pages": pages
         }
 
-        raise a.Return(result)
+        return result
 
     def render(self, data):
         return [
@@ -2080,19 +2031,19 @@ class StoreCampaignsController(a.AdminController):
                     "title": "Actions"
                 }
             ], [
-                  {
-                      "id": [a.link("campaign", str(campaign.campaign_id), icon="percent",
-                                    campaign_id=campaign.campaign_id)],
-                      "name": campaign.name,
-                      "dates": "{0} - {1}".format(str(campaign.time_start), str(campaign.time_end)),
-                      "enabled": [
-                          a.status("Yes" if campaign.enabled else "No",
-                                   "success" if campaign.enabled else "danger")
-                      ],
-                      "actions": [a.button("campaign", "Delete", "danger", _method="delete",
-                                           campaign_id=campaign.campaign_id)]
-                  } for campaign in data["campaigns"]
-            ], "default", empty="No campaigns"),
+                          {
+                              "id": [a.link("campaign", str(campaign.campaign_id), icon="percent",
+                                            campaign_id=campaign.campaign_id)],
+                              "name": campaign.name,
+                              "dates": "{0} - {1}".format(str(campaign.time_start), str(campaign.time_end)),
+                              "enabled": [
+                                  a.status("Yes" if campaign.enabled else "No",
+                                           "success" if campaign.enabled else "danger")
+                              ],
+                              "actions": [a.button("campaign", "Delete", "danger", _method="delete",
+                                                   campaign_id=campaign.campaign_id)]
+                          } for campaign in data["campaigns"]
+                      ], "default", empty="No campaigns"),
             a.pages(data["pages"]),
 
             a.links("Navigate", [
@@ -2106,23 +2057,22 @@ class StoreCampaignsController(a.AdminController):
 
 
 class NewStoreCampaignController(a.AdminController):
-    @coroutine
     @validate(campaign_name="str", campaign_enabled="bool", campaign_time_start="datetime",
               campaign_time_end="datetime", campaign_data="load_json_dict", clone_campaign_items="bool")
-    def create(self, campaign_name, campaign_data, campaign_time_start,
-               campaign_time_end, campaign_enabled=False, clone_campaign_items=False, **ignored):
+    async def create(self, campaign_name, campaign_data, campaign_time_start,
+                     campaign_time_end, campaign_enabled=False, clone_campaign_items=False, **ignored):
         stores = self.application.stores
         campaigns = self.application.campaigns
 
         store_id = self.context.get("store_id")
 
         try:
-            yield stores.get_store(self.gamespace, store_id)
+            await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            campaign_id = yield campaigns.new_campaign(
+            campaign_id = await campaigns.new_campaign(
                 self.gamespace, store_id, campaign_name, campaign_time_start, campaign_time_end,
                 campaign_data, campaign_enabled)
         except ItemError as e:
@@ -2132,7 +2082,7 @@ class NewStoreCampaignController(a.AdminController):
 
         if clone_campaign_items and clone:
             try:
-                yield campaigns.clone_campaign_items(self.gamespace, clone, campaign_id)
+                await campaigns.clone_campaign_items(self.gamespace, clone, campaign_id)
             except CampaignError:
                 pass
 
@@ -2141,21 +2091,20 @@ class NewStoreCampaignController(a.AdminController):
             message="New campaign has been created",
             campaign_id=campaign_id)
 
-    @coroutine
     @validate(store_id="int", clone="int")
-    def get(self, store_id, clone=None):
+    async def get(self, store_id, clone=None):
 
         stores = self.application.stores
         campaigns = self.application.campaigns
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         if clone:
             try:
-                campaign = yield campaigns.get_campaign(self.gamespace, clone)
+                campaign = await campaigns.get_campaign(self.gamespace, clone)
             except CampaignNotFound:
                 raise a.ActionError("No campaign to clone from")
             except CampaignError as e:
@@ -2190,7 +2139,7 @@ class NewStoreCampaignController(a.AdminController):
             "clone_campaign_items": "true"
         }
 
-        raise a.Return(data)
+        return data
 
     def render(self, data):
 
@@ -2236,17 +2185,16 @@ class NewStoreCampaignController(a.AdminController):
 
 
 class StoreCampaignController(a.AdminController):
-    @coroutine
     @validate(campaign_name="str", campaign_enabled="bool", campaign_time_start="datetime",
               campaign_time_end="datetime", campaign_data="load_json_dict")
-    def update(self, campaign_name, campaign_data, campaign_time_start,
-               campaign_time_end, campaign_enabled=False, **ignored):
+    async def update(self, campaign_name, campaign_data, campaign_time_start,
+                     campaign_time_end, campaign_enabled=False, **ignored):
 
         campaigns = self.application.campaigns
         campaign_id = self.context.get("campaign_id")
 
         try:
-            updated = yield campaigns.update_campaign(
+            updated = await campaigns.update_campaign(
                 self.gamespace, campaign_id, campaign_name, campaign_time_start, campaign_time_end,
                 campaign_data, campaign_enabled)
         except ItemError as e:
@@ -2257,21 +2205,20 @@ class StoreCampaignController(a.AdminController):
             message="Campaign has been updated" if updated else "Nothing to update",
             campaign_id=campaign_id)
 
-    @coroutine
-    def delete(self, **ignored):
+    async def delete(self, **ignored):
 
         campaigns = self.application.campaigns
         campaign_id = self.context.get("campaign_id")
 
         try:
-            campaign = yield campaigns.get_campaign(self.gamespace, campaign_id)
+            campaign = await campaigns.get_campaign(self.gamespace, campaign_id)
         except CampaignNotFound:
             raise a.ActionError("No such campaign")
         except CampaignError as e:
             raise a.ActionError("Failed to get campaign: " + e.message)
 
         try:
-            deleted = yield campaigns.delete_campaign(
+            deleted = await campaigns.delete_campaign(
                 self.gamespace, campaign_id)
         except ItemError as e:
             raise a.ActionError(e.message)
@@ -2281,27 +2228,26 @@ class StoreCampaignController(a.AdminController):
             message="Campaign has been deleted" if deleted else "Nothing to delete",
             store_id=campaign.store_id)
 
-    @coroutine
     @validate(campaign_id="int")
-    def get(self, campaign_id):
+    async def get(self, campaign_id):
 
         stores = self.application.stores
         campaigns = self.application.campaigns
 
         try:
-            campaign = yield campaigns.get_campaign(self.gamespace, campaign_id)
+            campaign = await campaigns.get_campaign(self.gamespace, campaign_id)
         except CampaignNotFound:
             raise a.ActionError("No such campaign")
         except CampaignError as e:
             raise a.ActionError("Failed to get campaign: " + e.message)
 
         try:
-            store = yield stores.get_store(self.gamespace, campaign.store_id)
+            store = await stores.get_store(self.gamespace, campaign.store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            campaign_items = yield campaigns.list_campaign_items(self.gamespace, campaign_id)
+            campaign_items = await campaigns.list_campaign_items(self.gamespace, campaign_id)
         except CampaignError as e:
             raise a.ActionError(e.message)
 
@@ -2317,7 +2263,7 @@ class StoreCampaignController(a.AdminController):
             "campaign_enabled": "true" if campaign.enabled else "false"
         }
 
-        raise a.Return(data)
+        return data
 
     def render(self, data):
         return [
@@ -2352,26 +2298,28 @@ class StoreCampaignController(a.AdminController):
                     "title": "Actions"
                 }
             ], [
-                  {
-                      "name": [a.link("campaign_item", str(entry.item.name), icon="shopping-bag",
-                                      item_id=entry.item.item_id, campaign_id=self.context.get("campaign_id"))],
-                      "original_tier": [a.link("tier", str(entry.tier.title), tier_id=entry.tier.tier_id)],
-                      "updated_tier": [a.link("tier", str(entry.campaign_tier_title), tier_id=entry.campaign_tier_id)],
-                      "updated_public": [
-                        a.json_view({
-                            "updated": entry.campaign_item.public_data,
-                            "old": entry.item.public_data
-                        })
-                      ], "updated_private": [
-                        a.json_view({
-                            "updated": entry.campaign_item.private_data,
-                            "old": entry.item.private_data
-                        })
-                      ],
-                      "actions": [a.button("campaign_item", "Remove", "danger", _method="remove",
-                                           campaign_id=self.context.get("campaign_id"), item_id=entry.item.item_id)]
-                  } for entry in data["campaign_items"]
-            ], "default", empty="No campaign items so far"),
+                          {
+                              "name": [a.link("campaign_item", str(entry.item.name), icon="shopping-bag",
+                                              item_id=entry.item.item_id, campaign_id=self.context.get("campaign_id"))],
+                              "original_tier": [a.link("tier", str(entry.tier.title), tier_id=entry.tier.tier_id)],
+                              "updated_tier": [
+                                  a.link("tier", str(entry.campaign_tier_title), tier_id=entry.campaign_tier_id)],
+                              "updated_public": [
+                                  a.json_view({
+                                      "updated": entry.campaign_item.public_data,
+                                      "old": entry.item.public_data
+                                  })
+                              ], "updated_private": [
+                              a.json_view({
+                                  "updated": entry.campaign_item.private_data,
+                                  "old": entry.item.private_data
+                              })
+                          ],
+                              "actions": [a.button("campaign_item", "Remove", "danger", _method="remove",
+                                                   campaign_id=self.context.get("campaign_id"),
+                                                   item_id=entry.item.item_id)]
+                          } for entry in data["campaign_items"]
+                      ], "default", empty="No campaign items so far"),
             a.links("Actions", [
                 a.link("new_campaign_item_select", "Add an item into the campaign", icon="plus",
                        campaign_id=self.context.get("campaign_id"))
@@ -2407,16 +2355,15 @@ class StoreCampaignController(a.AdminController):
 
 
 class NewCampaignItemSelectController(a.AdminController):
-    @coroutine
     @validate(campaign_id="int")
-    def get(self, campaign_id):
+    async def get(self, campaign_id):
 
         stores = self.application.stores
         items = self.application.items
         campaigns = self.application.campaigns
 
         try:
-            campaign = yield campaigns.get_campaign(self.gamespace, campaign_id)
+            campaign = await campaigns.get_campaign(self.gamespace, campaign_id)
         except CampaignNotFound:
             raise a.ActionError("No such campaign")
         except CampaignError as e:
@@ -2425,12 +2372,12 @@ class NewCampaignItemSelectController(a.AdminController):
         store_id = campaign.store_id
 
         try:
-            store = yield stores.get_store(self.gamespace, store_id)
+            store = await stores.get_store(self.gamespace, store_id)
         except StoreNotFound:
             raise a.ActionError("No such store")
 
         try:
-            store_items_raw = yield items.list_enabled_items(self.gamespace, store_id)
+            store_items_raw = await items.list_enabled_items(self.gamespace, store_id)
         except ItemError as e:
             raise a.ActionError(e.message)
         else:
@@ -2440,7 +2387,7 @@ class NewCampaignItemSelectController(a.AdminController):
             }
 
         try:
-            existing_items_raw = yield campaigns.list_campaign_items(self.gamespace, campaign_id)
+            existing_items_raw = await campaigns.list_campaign_items(self.gamespace, campaign_id)
         except CampaignError as e:
             raise a.ActionError(e.message)
         else:
@@ -2452,7 +2399,7 @@ class NewCampaignItemSelectController(a.AdminController):
         for existing_item_id in existing_items:
             store_items.pop(existing_item_id, None)
 
-        store_items = sorted(store_items.values(), key=lambda entry: (int(entry.item.item_id), entry, ))
+        store_items = sorted(store_items.values(), key=lambda entry: (int(entry.item.item_id), entry,))
 
         data = {
             "store_name": store.name,
@@ -2461,7 +2408,7 @@ class NewCampaignItemSelectController(a.AdminController):
             "store_items": store_items
         }
 
-        raise a.Return(data)
+        return data
 
     def render(self, data):
         return [
@@ -2490,20 +2437,20 @@ class NewCampaignItemSelectController(a.AdminController):
                     "title": "Current Tier"
                 }
             ], [
-                  {
-                      "name": [
-                          a.link("new_campaign_item", entry.item.name, icon="plus",
-                                 item_id=entry.item.item_id, campaign_id=self.context.get("campaign_id"))],
-                      "category": [
-                          a.link(
-                              "category", entry.category.name,
-                              icon="list-alt", category_id=entry.category.category_id)
-                      ],
-                      "tier": [a.link("tier", entry.tier.title, tier_id=entry.tier.tier_id)],
-                      "title": entry.item.title("EN")
-                  }
-                  for entry in data["store_items"]
-              ], "default"),
+                          {
+                              "name": [
+                                  a.link("new_campaign_item", entry.item.name, icon="plus",
+                                         item_id=entry.item.item_id, campaign_id=self.context.get("campaign_id"))],
+                              "category": [
+                                  a.link(
+                                      "category", entry.category.name,
+                                      icon="list-alt", category_id=entry.category.category_id)
+                              ],
+                              "tier": [a.link("tier", entry.tier.title, tier_id=entry.tier.tier_id)],
+                              "title": entry.item.title("EN")
+                          }
+                          for entry in data["store_items"]
+                      ], "default"),
 
             a.links("Navigate", [
                 a.link("campaign", "Go back", icon="chevron-left", campaign_id=self.context.get("campaign_id"))
@@ -2515,11 +2462,10 @@ class NewCampaignItemSelectController(a.AdminController):
 
 
 class NewCampaignItemController(a.AdminController):
-    @coroutine
     @validate(campaign_item_tier="int",
               campaign_item_public_data="load_json_dict",
               campaign_item_private_data="load_json_dict")
-    def create(self, campaign_item_tier, campaign_item_public_data, campaign_item_private_data, **ignored):
+    async def create(self, campaign_item_tier, campaign_item_public_data, campaign_item_private_data, **ignored):
 
         campaign_id = self.context.get("campaign_id")
         item_id = self.context.get("item_id")
@@ -2528,16 +2474,16 @@ class NewCampaignItemController(a.AdminController):
         items = self.application.items
         campaigns = self.application.campaigns
 
-        with (yield self.application.db.acquire()) as db:
+        async with self.application.db.acquire() as db:
             try:
-                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+                campaign = await campaigns.get_campaign(self.gamespace, campaign_id, db=db)
             except CampaignNotFound:
                 raise a.ActionError("No such campaign")
             except CampaignError as e:
                 raise a.ActionError("Failed to get a campaign: " + e.message)
 
             try:
-                item = yield items.get_item(self.gamespace, item_id, db=db)
+                item = await items.get_item(self.gamespace, item_id, db=db)
             except ItemNotFound:
                 raise a.ActionError("No such item")
             except ItemError as e:
@@ -2549,12 +2495,12 @@ class NewCampaignItemController(a.AdminController):
             store_id = campaign.store_id
 
             try:
-                yield stores.get_store(self.gamespace, store_id, db=db)
+                await stores.get_store(self.gamespace, store_id, db=db)
             except StoreNotFound:
                 raise a.ActionError("No such store")
 
             try:
-                yield campaigns.add_campaign_item(
+                await campaigns.add_campaign_item(
                     self.gamespace, campaign_id, item_id, campaign_item_private_data,
                     campaign_item_public_data, campaign_item_tier)
             except CampaignError as e:
@@ -2563,9 +2509,8 @@ class NewCampaignItemController(a.AdminController):
             raise a.Redirect("campaign", message="Item has been added into the campaign",
                              campaign_id=campaign_id)
 
-    @coroutine
     @validate(campaign_id="int", item_id="int")
-    def get(self, campaign_id, item_id):
+    async def get(self, campaign_id, item_id):
 
         stores = self.application.stores
         items = self.application.items
@@ -2573,23 +2518,23 @@ class NewCampaignItemController(a.AdminController):
         tiers = self.application.tiers
         categories = self.application.categories
 
-        with (yield self.application.db.acquire()) as db:
+        async with self.application.db.acquire() as db:
             try:
-                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+                campaign = await campaigns.get_campaign(self.gamespace, campaign_id, db=db)
             except CampaignNotFound:
                 raise a.ActionError("No such campaign")
             except CampaignError as e:
                 raise a.ActionError("Failed to get a campaign: " + e.message)
 
             try:
-                item = yield items.get_item(self.gamespace, item_id, db=db)
+                item = await items.get_item(self.gamespace, item_id, db=db)
             except ItemNotFound:
                 raise a.ActionError("No such item")
             except ItemError as e:
                 raise a.ActionError("Failed to get an item: " + e.message)
 
             try:
-                category = yield categories.get_category(self.gamespace, item.category, db=db)
+                category = await categories.get_category(self.gamespace, item.category, db=db)
             except CategoryNotFound:
                 raise a.ActionError("No such category")
 
@@ -2599,17 +2544,17 @@ class NewCampaignItemController(a.AdminController):
             store_id = campaign.store_id
 
             try:
-                store = yield stores.get_store(self.gamespace, store_id, db=db)
+                store = await stores.get_store(self.gamespace, store_id, db=db)
             except StoreNotFound:
                 raise a.ActionError("No such store")
 
             try:
-                tiers_list = yield tiers.list_tiers(self.gamespace, store_id, db=db)
+                tiers_list = await tiers.list_tiers(self.gamespace, store_id, db=db)
             except TierError as e:
                 raise a.ActionError(e.message)
 
             try:
-                common_scheme = yield categories.get_common_scheme(self.gamespace)
+                common_scheme = await categories.get_common_scheme(self.gamespace)
             except CategoryNotFound:
                 common_public_item_scheme = {}
                 common_private_item_scheme = {}
@@ -2636,7 +2581,7 @@ class NewCampaignItemController(a.AdminController):
                 "tiers_list": {tier.tier_id: u"{0} ({1})".format(tier.title, tier.name) for tier in tiers_list},
             }
 
-            raise a.Return(data)
+            return data
 
     def render(self, data):
         return [
@@ -2673,11 +2618,10 @@ class NewCampaignItemController(a.AdminController):
 
 
 class CampaignItemController(a.AdminController):
-    @coroutine
     @validate(campaign_item_tier="int",
               campaign_item_public_data="load_json_dict",
               campaign_item_private_data="load_json_dict")
-    def update(self, campaign_item_tier, campaign_item_public_data, campaign_item_private_data, **ignored):
+    async def update(self, campaign_item_tier, campaign_item_public_data, campaign_item_private_data, **ignored):
 
         campaign_id = self.context.get("campaign_id")
         item_id = self.context.get("item_id")
@@ -2686,16 +2630,16 @@ class CampaignItemController(a.AdminController):
         items = self.application.items
         campaigns = self.application.campaigns
 
-        with (yield self.application.db.acquire()) as db:
+        async with self.application.db.acquire() as db:
             try:
-                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+                campaign = await campaigns.get_campaign(self.gamespace, campaign_id, db=db)
             except CampaignNotFound:
                 raise a.ActionError("No such campaign")
             except CampaignError as e:
                 raise a.ActionError("Failed to get a campaign: " + e.message)
 
             try:
-                item = yield items.get_item(self.gamespace, item_id, db=db)
+                item = await items.get_item(self.gamespace, item_id, db=db)
             except ItemNotFound:
                 raise a.ActionError("No such item")
             except ItemError as e:
@@ -2707,12 +2651,12 @@ class CampaignItemController(a.AdminController):
             store_id = campaign.store_id
 
             try:
-                yield stores.get_store(self.gamespace, store_id, db=db)
+                await stores.get_store(self.gamespace, store_id, db=db)
             except StoreNotFound:
                 raise a.ActionError("No such store")
 
             try:
-                updated = yield campaigns.update_campaign_item(
+                updated = await campaigns.update_campaign_item(
                     self.gamespace, campaign_id, item_id, campaign_item_private_data,
                     campaign_item_public_data, campaign_item_tier)
             except CampaignError as e:
@@ -2722,8 +2666,7 @@ class CampaignItemController(a.AdminController):
                              message="Item has been updated" if updated else "Nothing to update",
                              campaign_id=campaign_id)
 
-    @coroutine
-    def remove(self, **ignored):
+    async def remove(self, **ignored):
 
         campaign_id = self.context.get("campaign_id")
         item_id = self.context.get("item_id")
@@ -2732,16 +2675,16 @@ class CampaignItemController(a.AdminController):
         items = self.application.items
         campaigns = self.application.campaigns
 
-        with (yield self.application.db.acquire()) as db:
+        async with self.application.db.acquire() as db:
             try:
-                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+                campaign = await campaigns.get_campaign(self.gamespace, campaign_id, db=db)
             except CampaignNotFound:
                 raise a.ActionError("No such campaign")
             except CampaignError as e:
                 raise a.ActionError("Failed to get a campaign: " + e.message)
 
             try:
-                item = yield items.get_item(self.gamespace, item_id, db=db)
+                item = await items.get_item(self.gamespace, item_id, db=db)
             except ItemNotFound:
                 raise a.ActionError("No such item")
             except ItemError as e:
@@ -2753,13 +2696,13 @@ class CampaignItemController(a.AdminController):
             store_id = campaign.store_id
 
             try:
-                yield stores.get_store(self.gamespace, store_id, db=db)
+                await stores.get_store(self.gamespace, store_id, db=db)
             except StoreNotFound:
                 raise a.ActionError("No such store")
 
             try:
-                deleted = yield campaigns.delete_campaign_item(
-                    self.gamespace, campaign_id, item_id,)
+                deleted = await campaigns.delete_campaign_item(
+                    self.gamespace, campaign_id, item_id, )
             except CampaignError as e:
                 raise a.ActionError(e.message)
 
@@ -2767,9 +2710,8 @@ class CampaignItemController(a.AdminController):
                              message="Item has been removed from campaign" if deleted else "Nothing to remove",
                              campaign_id=campaign_id)
 
-    @coroutine
     @validate(campaign_id="int", item_id="int")
-    def get(self, campaign_id, item_id):
+    async def get(self, campaign_id, item_id):
 
         stores = self.application.stores
         items = self.application.items
@@ -2777,30 +2719,30 @@ class CampaignItemController(a.AdminController):
         tiers = self.application.tiers
         categories = self.application.categories
 
-        with (yield self.application.db.acquire()) as db:
+        async with self.application.db.acquire() as db:
             try:
-                campaign_item = yield campaigns.get_campaign_item(self.gamespace, campaign_id, item_id, db=db)
+                campaign_item = await campaigns.get_campaign_item(self.gamespace, campaign_id, item_id, db=db)
             except CampaignItemNotFound:
                 raise a.ActionError("No such campaign item")
             except CampaignError as e:
                 raise a.ActionError("Failed to get a campaign item: " + e.message)
 
             try:
-                campaign = yield campaigns.get_campaign(self.gamespace, campaign_id, db=db)
+                campaign = await campaigns.get_campaign(self.gamespace, campaign_id, db=db)
             except CampaignNotFound:
                 raise a.ActionError("No such campaign")
             except CampaignError as e:
                 raise a.ActionError("Failed to get a campaign: " + e.message)
 
             try:
-                item = yield items.get_item(self.gamespace, item_id, db=db)
+                item = await items.get_item(self.gamespace, item_id, db=db)
             except ItemNotFound:
                 raise a.ActionError("No such item")
             except ItemError as e:
                 raise a.ActionError("Failed to get an item: " + e.message)
 
             try:
-                category = yield categories.get_category(self.gamespace, item.category, db=db)
+                category = await categories.get_category(self.gamespace, item.category, db=db)
             except CategoryNotFound:
                 raise a.ActionError("No such category")
 
@@ -2810,17 +2752,17 @@ class CampaignItemController(a.AdminController):
             store_id = campaign.store_id
 
             try:
-                store = yield stores.get_store(self.gamespace, store_id, db=db)
+                store = await stores.get_store(self.gamespace, store_id, db=db)
             except StoreNotFound:
                 raise a.ActionError("No such store")
 
             try:
-                tiers_list = yield tiers.list_tiers(self.gamespace, store_id, db=db)
+                tiers_list = await tiers.list_tiers(self.gamespace, store_id, db=db)
             except TierError as e:
                 raise a.ActionError(e.message)
 
             try:
-                common_scheme = yield categories.get_common_scheme(self.gamespace)
+                common_scheme = await categories.get_common_scheme(self.gamespace)
             except CategoryNotFound:
                 common_public_item_scheme = {}
                 common_private_item_scheme = {}
@@ -2847,7 +2789,7 @@ class CampaignItemController(a.AdminController):
                 "tiers_list": {tier.tier_id: u"{0} ({1})".format(tier.title, tier.name) for tier in tiers_list},
             }
 
-            raise a.Return(data)
+            return data
 
     def render(self, data):
         return [
@@ -2885,7 +2827,7 @@ class CampaignItemController(a.AdminController):
 
 
 def init():
-    import appstore
-    import steam
-    import xsolla
-    import mailru
+    from . import appstore
+    from . import steam
+    from . import xsolla
+    from . import mailru

@@ -1,40 +1,36 @@
 
-from common.options import options
+from anthill.common.options import options
 
-import handler
-import common.server
-import common.database
-import common.access
-import common.sign
-import common.keyvalue
+from . import handler as h
+from . import options as _opts
 
-from common.social.steam import SteamAPI
-from common.social.xsolla import XsollaAPI
-from common.social.mailru import MailRuAPI
+from anthill.common import server, database, access, keyvalue
 
-import admin
-import options as _opts
+from anthill.common.social.steam import SteamAPI
+from anthill.common.social.xsolla import XsollaAPI
+from anthill.common.social.mailru import MailRuAPI
 
-from model.store import StoreModel
-from model.item import ItemModel
-from model.category import CategoryModel
-from model.tier import TierModel, CurrencyModel
-from model.order import OrdersModel
-from model.campaign import CampaignsModel
+from . import admin
+from . model.store import StoreModel
+from . model.item import ItemModel
+from . model.category import CategoryModel
+from . model.tier import TierModel, CurrencyModel
+from . model.order import OrdersModel
+from . model.campaign import CampaignsModel
 
 
-class StoreServer(common.server.Server):
+class StoreServer(server.Server):
     # noinspection PyShadowingNames
     def __init__(self):
         super(StoreServer, self).__init__()
 
-        self.db = common.database.Database(
+        self.db = database.Database(
             host=options.db_host,
             database=options.db_name,
             user=options.db_username,
             password=options.db_password)
 
-        self.cache = common.keyvalue.KeyValueStorage(
+        self.cache = keyvalue.KeyValueStorage(
             host=options.cache_host,
             port=options.cache_port,
             db=options.cache_db,
@@ -90,7 +86,7 @@ class StoreServer(common.server.Server):
         }
 
     def get_internal_handler(self):
-        return handler.InternalHandler(self)
+        return h.InternalHandler(self)
 
     def get_metadata(self):
         return {
@@ -101,16 +97,16 @@ class StoreServer(common.server.Server):
 
     def get_handlers(self):
         return [
-            (r"/store/(.*)", handler.StoreHandler),
-            (r"/order/new", handler.NewOrderHandler),
-            (r"/orders", handler.OrdersHandler),
-            (r"/order/(.*)", handler.OrderHandler),
-            (r"/hook/([0-9]+)/(.*)/(.*)", handler.WebHookHandler),
-            (r"/front/xsolla", handler.XsollaFrontHandler),
+            (r"/store/(.*)", h.StoreHandler),
+            (r"/order/new", h.NewOrderHandler),
+            (r"/orders", h.OrdersHandler),
+            (r"/order/(.*)", h.OrderHandler),
+            (r"/hook/([0-9]+)/(.*)/(.*)", h.WebHookHandler),
+            (r"/front/xsolla", h.XsollaFrontHandler),
         ]
 
 
 if __name__ == "__main__":
-    stt = common.server.init()
-    common.access.AccessToken.init([common.access.public()])
-    common.server.start(StoreServer)
+    stt = server.init()
+    access.AccessToken.init([access.public()])
+    server.start(StoreServer)

@@ -1,9 +1,9 @@
-# noinspection PyUnresolvedReferences
-from admin import StoreAdminComponents, TierAdminComponents, StoreComponentAdmin, TierComponentAdmin
-from steam import SteamStoreComponentAdmin
-from model.components.mailru import MailRuStoreComponent
 
-import common.admin as a
+from . import StoreAdminComponents, TierAdminComponents, StoreComponentAdmin, TierComponentAdmin
+from . steam import SteamStoreComponentAdmin
+from .. model.components.mailru import MailRuStoreComponent
+
+import anthill.common.admin as a
 
 
 class MailRuStoreComponentAdmin(SteamStoreComponentAdmin):

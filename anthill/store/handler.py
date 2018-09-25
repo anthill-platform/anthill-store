@@ -1,23 +1,21 @@
 
-from tornado.gen import coroutine, Return
 from tornado.web import HTTPError
 
-from common.access import scoped, AccessToken, remote_ip
-from common.handler import AuthenticatedHandler, AnthillRequestHandler
-from common.validate import ValidationError, validate
-from common.internal import InternalError
-from common import to_int
+from anthill.common.access import scoped, AccessToken, remote_ip
+from anthill.common.handler import AuthenticatedHandler, AnthillRequestHandler
+from anthill.common.validate import ValidationError, validate
+from anthill.common.internal import InternalError
+from anthill.common import to_int
 
-from model.store import StoreNotFound, StoreError
-from model.order import OrderError, NoOrderError, OrderQueryError
+from . model.store import StoreNotFound, StoreError
+from . model.order import OrderError, NoOrderError, OrderQueryError
 
 import ujson
 
 
 class StoreHandler(AuthenticatedHandler):
     @scoped(["store"])
-    @coroutine
-    def get(self, store_name):
+    async def get(self, store_name):
         stores = self.application.stores
         gamespace = self.token.get(AccessToken.GAMESPACE)
 
@@ -25,7 +23,7 @@ class StoreHandler(AuthenticatedHandler):
         extra_end_time = self.get_argument("extra_end_time", self.get_argument("extra_time", 0))
 
         try:
-            store_data = yield stores.build_store_data(
+            store_data = await stores.build_store_data(
                 gamespace, store_name, extra_start_time, extra_end_time)
         except StoreNotFound:
             raise HTTPError(404, "Store not found")
@@ -39,8 +37,7 @@ class StoreHandler(AuthenticatedHandler):
 
 class NewOrderHandler(AuthenticatedHandler):
     @scoped(["store_order"])
-    @coroutine
-    def post(self):
+    async def post(self):
         orders = self.application.orders
 
         store_name = self.get_argument("store")
@@ -63,7 +60,7 @@ class NewOrderHandler(AuthenticatedHandler):
                 env["ip_address"] = remote_ip(self.request)
 
         try:
-            order_info = yield orders.new_order(
+            order_info = await orders.new_order(
                 gamespace_id, account_id, store_name, component_name,
                 item_name, currency_name, amount, env)
         except OrderError as e:
@@ -76,15 +73,14 @@ class NewOrderHandler(AuthenticatedHandler):
 
 class OrderHandler(AuthenticatedHandler):
     @scoped(["store_order"])
-    @coroutine
-    def post(self, order_id):
+    async def post(self, order_id):
         orders = self.application.orders
 
         gamespace_id = self.token.get(AccessToken.GAMESPACE)
         account_id = self.token.account
 
         try:
-            result = yield orders.update_order(gamespace_id, order_id, account_id)
+            result = await orders.update_order(gamespace_id, order_id, account_id)
         except NoOrderError:
             raise HTTPError(404, "No such order")
         except OrderError as e:
@@ -97,15 +93,14 @@ class OrderHandler(AuthenticatedHandler):
 
 class OrdersHandler(AuthenticatedHandler):
     @scoped(["store_order"])
-    @coroutine
-    def post(self):
+    async def post(self):
         orders = self.application.orders
 
         gamespace_id = self.token.get(AccessToken.GAMESPACE)
         account_id = self.token.account
 
         try:
-            updated_orders = yield orders.update_orders(gamespace_id, account_id)
+            updated_orders = await orders.update_orders(gamespace_id, account_id)
         except OrderError as e:
             raise HTTPError(e.code, e.message)
         except ValidationError as e:
@@ -117,24 +112,23 @@ class OrdersHandler(AuthenticatedHandler):
 
 
 class WebHookHandler(AuthenticatedHandler):
-    @coroutine
-    def post(self, gamespace_id, store_name, component_name):
+    async def post(self, gamespace_id, store_name, component_name):
         orders = self.application.orders
 
         arguments = {
             key: value[0]
-            for key, value in self.request.arguments.iteritems()
+            for key, value in self.request.arguments.items()
         }
 
         headers = {
             key: value
-            for key, value in self.request.headers.iteritems()
+            for key, value in self.request.headers.items()
         }
 
         body = self.request.body
 
         try:
-            result = yield orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, body)
+            result = await orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, body)
         except NoOrderError:
             raise HTTPError(404, "No such order")
         except OrderError as e:
@@ -155,22 +149,21 @@ class WebHookHandler(AuthenticatedHandler):
 
             self.write(result)
 
-    @coroutine
-    def get(self, gamespace_id, store_name, component_name):
+    async def get(self, gamespace_id, store_name, component_name):
         orders = self.application.orders
 
         arguments = {
             key: value[0]
-            for key, value in self.request.arguments.iteritems()
+            for key, value in self.request.arguments.items()
         }
 
         headers = {
             key: value
-            for key, value in self.request.headers.iteritems()
+            for key, value in self.request.headers.items()
         }
 
         try:
-            result = yield orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, "")
+            result = await orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, "")
         except NoOrderError:
             raise HTTPError(404, "No such order")
         except OrderError as e:
@@ -196,28 +189,26 @@ class InternalHandler(object):
     def __init__(self, application):
         self.application = application
 
-    @coroutine
     @validate(gamespace="int", name="str_name")
-    def get_store(self, gamespace, name):
+    async def get_store(self, gamespace, name):
 
         try:
-            store_data = yield self.application.stores.build_store_data(gamespace, name)
+            store_data = await self.application.stores.build_store_data(gamespace, name)
         except StoreNotFound:
             raise InternalError(404, "Store not found")
         except ValidationError as e:
             raise InternalError(400, e.message)
 
-        raise Return({
+        raise {
             "store": store_data
-        })
+        }
 
-    @coroutine
     @validate(gamespace="int", account="int", store="str_name", item="str_name",
               amount="int", component="str_name", env="json_dict")
-    def new_order(self, gamespace, account, store, item, currency, amount, component, env):
+    async def new_order(self, gamespace, account, store, item, currency, amount, component, env):
 
         try:
-            result = yield self.application.orders.new_order(
+            result = await self.application.orders.new_order(
                 gamespace, account, store, component, item, currency, amount, env)
 
         except OrderError as e:
@@ -225,11 +216,10 @@ class InternalHandler(object):
         except ValidationError as e:
             raise InternalError(400, e.message)
 
-        raise Return(result)
+        return result
 
-    @coroutine
     @validate(gamespace="int", store="str_name", account="int", info="json_dict")
-    def list_orders(self, gamespace, store=None, account=None, info=None):
+    async def list_orders(self, gamespace, store=None, account=None, info=None):
 
         orders = self.application.orders
         stores = self.application.stores
@@ -239,11 +229,11 @@ class InternalHandler(object):
 
         if store:
             try:
-                store_id = yield stores.find_store(gamespace, store)
+                store_id = await stores.find_store(gamespace, store)
             except StoreNotFound:
                 raise InternalError(404, "No such store")
             except StoreError as e:
-                raise InternalError(500, e.message)
+                raise InternalError(500, str(e))
         else:
             store_id = None
 
@@ -256,7 +246,7 @@ class InternalHandler(object):
             q.info = info
 
         try:
-            orders = yield q.query()
+            orders = await q.query()
         except OrderQueryError as e:
             raise InternalError(e.code, e.message)
         except ValidationError as e:
@@ -280,16 +270,15 @@ class InternalHandler(object):
             for a in orders
         }
 
-        raise Return({
+        return {
             "orders": result
-        })
+        }
 
-    @coroutine
     @validate(gamespace="int", account="int", order_id="int")
-    def update_order(self, gamespace, account, order_id):
+    async def update_order(self, gamespace, account, order_id):
 
         try:
-            result = yield self.application.orders.update_order(
+            result = await self.application.orders.update_order(
                 gamespace, order_id, account)
 
         except NoOrderError:
@@ -299,23 +288,22 @@ class InternalHandler(object):
         except ValidationError as e:
             raise InternalError(400, e.message)
 
-        raise Return(result)
+        return result
 
-    @coroutine
     @validate(gamespace="int", account="int")
-    def update_orders(self, gamespace, account):
+    async def update_orders(self, gamespace, account):
 
         try:
-            updated_orders = yield self.application.orders.update_orders(
+            updated_orders = await self.application.orders.update_orders(
                 gamespace, account)
         except OrderError as e:
             raise InternalError(e.code, e.message)
         except ValidationError as e:
             raise InternalError(400, e.message)
 
-        raise Return({
+        return {
             "orders": updated_orders
-        })
+        }
 
 
 class XsollaFrontHandler(AnthillRequestHandler):

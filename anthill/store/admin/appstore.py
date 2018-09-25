@@ -1,8 +1,8 @@
 
-from admin import StoreAdminComponents, TierAdminComponents, StoreComponentAdmin, TierComponentAdmin
-from model.components.appstore import AppStoreStoreComponent, AppStoreTierComponent
+from . import StoreAdminComponents, TierAdminComponents, StoreComponentAdmin, TierComponentAdmin
+from .. model.components.appstore import AppStoreStoreComponent, AppStoreTierComponent
 
-import common.admin as a
+import anthill.common.admin as a
 
 
 class AppStoreStoreComponentAdmin(StoreComponentAdmin):

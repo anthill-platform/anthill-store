@@ -1,17 +1,16 @@
 
-from tornado.gen import coroutine, Return
 from tornado.ioloop import PeriodicCallback
 
-from store import StoreAdapter, StoreComponentAdapter, StoreError, StoreComponentNotFound
-from item import StoreItemAdapter
-from tier import TierError, TierNotFound, TierAdapter
-from campaign import CampaignError, CampaignItemNotFound
-from components import StoreComponents, StoreComponentError, NoSuchStoreComponentError
+from . store import StoreAdapter, StoreComponentAdapter, StoreError, StoreComponentNotFound
+from . item import StoreItemAdapter
+from . tier import TierError, TierNotFound, TierAdapter
+from . campaign import CampaignError, CampaignItemNotFound
+from . components import StoreComponents, StoreComponentError, NoSuchStoreComponentError
 
-from common.model import Model
-from common.database import DatabaseError, format_conditions_json
-from common.validate import validate
-from common import to_int
+from anthill.common.model import Model
+from anthill.common.database import DatabaseError, format_conditions_json
+from anthill.common.validate import validate
+from anthill.common import to_int
 
 
 import logging
@@ -140,8 +139,7 @@ class OrderQuery(object):
 
         return conditions, data
 
-    @coroutine
-    def query(self, one=False, count=False):
+    async def query(self, one=False, count=False):
         conditions, data = self.__values__()
 
         query = """
@@ -166,24 +164,24 @@ class OrderQuery(object):
 
         if one:
             try:
-                result = yield self.db.get(query, *data)
+                result = await self.db.get(query, *data)
             except DatabaseError as e:
                 raise OrderQueryError(500, "Failed to get message: " + e.args[1])
 
             if not result:
-                raise Return(None)
+                return None
 
-            raise Return(OrderComponentTierItemAdapter(result))
+            return OrderComponentTierItemAdapter(result)
         else:
             try:
-                result = yield self.db.query(query, *data)
+                result = await self.db.query(query, *data)
             except DatabaseError as e:
                 raise OrderQueryError(500, "Failed to query messages: " + e.args[1])
 
             count_result = 0
 
             if count:
-                count_result = yield self.db.get(
+                count_result = await self.db.get(
                     """
                         SELECT FOUND_ROWS() AS count;
                     """)
@@ -192,9 +190,9 @@ class OrderQuery(object):
             items = map(OrderComponentTierItemAdapter, result)
 
             if count:
-                raise Return((items, count_result))
+                return (items, count_result)
 
-            raise Return(items)
+            return items
 
 
 class OrdersModel(Model):
@@ -226,10 +224,9 @@ class OrdersModel(Model):
         else:
             self.monitoring_report_callback = None
 
-    @coroutine
-    def __update_monitoring_status__(self):
+    async def __update_monitoring_status__(self):
 
-        successful_orders = yield self.db.query("""
+        successful_orders = await self.db.query("""
             SELECT `order_currency`, SUM(`order_total`) AS `order_total`
             FROM `orders`
             WHERE `order_status`='SUCCEEDED' AND `orders`.`order_time` > DATE_SUB(NOW(), INTERVAL 1 MINUTE)
@@ -241,18 +238,16 @@ class OrdersModel(Model):
                 "total": successful_order["order_total"]
             }, currency=successful_order["order_currency"])
 
-    @coroutine
-    def started(self, application):
-        yield super(OrdersModel, self).started(application)
+    async def started(self, application):
+        await super(OrdersModel, self).started(application)
         if self.monitoring_report_callback:
             self.monitoring_report_callback.start()
-            yield self.__update_monitoring_status__()
+            await self.__update_monitoring_status__()
 
-    @coroutine
-    def stopped(self):
+    async def stopped(self):
         if self.monitoring_report_callback:
             self.monitoring_report_callback.stop()
-        yield super(OrdersModel, self).stopped()
+        await super(OrdersModel, self).stopped()
 
     def get_setup_tables(self):
         return ["orders"]
@@ -263,17 +258,16 @@ class OrdersModel(Model):
     def has_delete_account_event(self):
         return True
 
-    @coroutine
-    def accounts_deleted(self, gamespace, accounts, gamespace_only):
+    async def accounts_deleted(self, gamespace, accounts, gamespace_only):
         try:
             if gamespace_only:
-                yield self.db.execute(
+                await self.db.execute(
                     """
                         DELETE FROM `orders`
                         WHERE `gamespace_id`=%s AND `account_id` IN %s;
                     """, gamespace, accounts)
             else:
-                yield self.db.execute(
+                await self.db.execute(
                     """
                         DELETE FROM `orders`
                         WHERE `account_id` IN %s;
@@ -281,10 +275,9 @@ class OrdersModel(Model):
         except DatabaseError as e:
             raise OrderError(500, "Failed to delete user orders: " + e.args[1])
 
-    @coroutine
-    def __gather_order_info__(self, gamespace_id, store, component, item, db=None):
+    async def __gather_order_info__(self, gamespace_id, store, component, item, db=None):
         try:
-            data = yield (db or self.db).get(
+            data = await (db or self.db).get(
                 """
                     SELECT *
                     FROM `stores`, `items`, `store_components`, `tiers`
@@ -303,13 +296,12 @@ class OrdersModel(Model):
         if not data:
             raise NoOrderError()
 
-        raise Return(StoreComponentItemTierAdapter(data))
+        return StoreComponentItemTierAdapter(data)
 
-    @coroutine
     @validate(gamespace_id="int", order_id="int")
-    def get_order(self, gamespace_id, order_id, db=None):
+    async def get_order(self, gamespace_id, order_id, db=None):
         try:
-            data = yield (db or self.db).get(
+            data = await (db or self.db).get(
                 """
                     SELECT *
                     FROM `orders`
@@ -322,13 +314,12 @@ class OrdersModel(Model):
         if not data:
             raise NoOrderError()
 
-        raise Return(OrderAdapter(data))
+        return OrderAdapter(data)
 
-    @coroutine
     @validate(gamespace_id="int", order_id="int")
-    def get_order_info(self, gamespace_id, order_id, account_id, db=None):
+    async def get_order_info(self, gamespace_id, order_id, account_id, db=None):
         try:
-            data = yield (db or self.db).get(
+            data = await (db or self.db).get(
                 """
                     SELECT `store_components`.*, `items`.*, `stores`.*
                     FROM `orders`, `store_components`, `items`, `stores`
@@ -347,13 +338,12 @@ class OrdersModel(Model):
         if not data:
             raise NoOrderError()
 
-        raise Return(StoreComponentItemTierAdapter(data))
+        return StoreComponentItemTierAdapter(data)
 
-    @coroutine
     @validate(gamespace_id="int", order_id="int", status="str_name", info="json")
-    def update_order_info(self, gamespace_id, order_id, status, info, db=None):
+    async def update_order_info(self, gamespace_id, order_id, status, info, db=None):
         try:
-            yield (db or self.db).execute(
+            await (db or self.db).execute(
                 """
                     UPDATE `orders`
                     SET `order_info`=%s, `order_status`=%s
@@ -364,11 +354,10 @@ class OrdersModel(Model):
         else:
             self.app.monitor_rate("orders", "updated", status=status)
 
-    @coroutine
     @validate(gamespace_id="int", order_id="int", status="str_name")
-    def update_order_status(self, gamespace_id, order_id, status, db=None):
+    async def update_order_status(self, gamespace_id, order_id, status, db=None):
         try:
-            yield (db or self.db).execute(
+            await (db or self.db).execute(
                 """
                     UPDATE `orders`
                     SET `order_status`=%s
@@ -379,20 +368,19 @@ class OrdersModel(Model):
         else:
             self.app.monitor_rate("orders", "updated", status=status)
 
-    @coroutine
     @validate(gamespace_id="int", order_id="int", old_status="str_name",
               new_status="str_name", ensure_order_total="int", ensure_item_id="int")
-    def update_order_status_reliable(self, gamespace_id, order_id, old_status,
+    async def update_order_status_reliable(self, gamespace_id, order_id, old_status,
                                      new_status, new_info=None,
                                      ensure_order_total=None, ensure_item_id=None):
 
         application = self.app
 
         try:
-            with (yield self.db.acquire(auto_commit=False)) as db:
+            async with self.db.acquire(auto_commit=False) as db:
 
                 try:
-                    order = yield db.get(
+                    order = await db.get(
                         """
                             SELECT * FROM `orders`
                             WHERE `order_status`=%s AND `order_id`=%s AND `gamespace_id`=%s
@@ -400,7 +388,7 @@ class OrdersModel(Model):
                         """, old_status, order_id, gamespace_id)
 
                     if not order:
-                        raise Return(False)
+                        return False
 
                     if ensure_order_total is not None:
                         order_total = int(order["order_total"])
@@ -417,7 +405,7 @@ class OrdersModel(Model):
                     if isinstance(new_info, dict):
                         order_info.update(new_info)
 
-                    yield db.execute(
+                    await db.execute(
                         """
                             UPDATE `orders`
                             SET `order_status`=%s, `order_info`=%s
@@ -426,10 +414,10 @@ class OrdersModel(Model):
 
                     application.monitor_rate("orders", "updated", status=new_status)
 
-                    raise Return(True)
+                    return True
 
                 finally:
-                    yield db.commit()
+                    await db.commit()
 
         except DatabaseError as e:
             raise OrderError(500, e.args[1])
@@ -437,10 +425,9 @@ class OrdersModel(Model):
     def orders_query(self, gamespace, store_id=None):
         return OrderQuery(gamespace, self.db, store_id)
 
-    @coroutine
     @validate(gamespace_id="int", account_id="int", store="str_name", component="str_name", item_name="str_name",
               currency="str_name", amount="int", env="json")
-    def new_order(self, gamespace_id, account_id, store_name, component_name, item_name, currency, amount, env):
+    async def new_order(self, gamespace_id, account_id, store_name, component_name, item_name, currency, amount, env):
 
         if (not isinstance(amount, int)) or amount <= 0:
             raise OrderError(400, "Invalid amount")
@@ -448,9 +435,9 @@ class OrdersModel(Model):
         if not StoreComponents.has_component(component_name):
             raise OrderError(404, "No such component")
 
-        with (yield self.db.acquire()) as db:
+        async with self.db.acquire() as db:
             try:
-                data = yield self.__gather_order_info__(gamespace_id, store_name, component_name, item_name, db=db)
+                data = await self.__gather_order_info__(gamespace_id, store_name, component_name, item_name, db=db)
             except NoOrderError:
                 raise OrderError(404, "Not found (either store, or currency, or component, or item, "
                                       "or item does not support such currency)")
@@ -465,7 +452,7 @@ class OrdersModel(Model):
             component_id = data.component.component_id
 
             try:
-                campaign_entry = yield self.campaigns.find_current_campaign_item(gamespace_id, store_id, item_id)
+                campaign_entry = await self.campaigns.find_current_campaign_item(gamespace_id, store_id, item_id)
             except CampaignError:
                 tier = data.tier
                 campaign_id = None
@@ -492,7 +479,7 @@ class OrdersModel(Model):
             total = price * amount
 
             try:
-                order_id = yield db.insert(
+                order_id = await db.insert(
                     """
                         INSERT INTO `orders`
                             (`gamespace_id`, `store_id`, `tier_id`, `item_id`, `account_id`,
@@ -507,13 +494,13 @@ class OrdersModel(Model):
             component_instance = StoreComponents.component(component_name, data.component.data)
 
             try:
-                info = yield component_instance.new_order(
+                info = await component_instance.new_order(
                     self.app, gamespace_id, account_id, order_id, currency, price,
                     amount, total, data.store, item, env, campaign_item)
 
             except StoreComponentError as e:
                 logging.exception("Failed to process new order: " + e.message)
-                yield self.update_order_status(gamespace_id, order_id, OrdersModel.STATUS_ERROR, db=db)
+                await self.update_order_status(gamespace_id, order_id, OrdersModel.STATUS_ERROR, db=db)
                 raise OrderError(e.code, e.message)
 
             result = {
@@ -522,12 +509,11 @@ class OrdersModel(Model):
 
             if info:
                 result.update(info)
-                yield self.update_order_status(gamespace_id, order_id, OrdersModel.STATUS_CREATED, db=db)
+                await self.update_order_status(gamespace_id, order_id, OrdersModel.STATUS_CREATED, db=db)
 
-            raise Return(result)
+            return result
 
-    @coroutine
-    def __process_order_error__(self, gamespace_id, order, order_info, update_status, account_id, db):
+    async def __process_order_error__(self, gamespace_id, order, order_info, update_status, account_id, db):
         logging.warning("Processing failed order", extra={
             "gamespace": gamespace_id,
             "order": order.order_id,
@@ -536,13 +522,12 @@ class OrdersModel(Model):
 
         raise OrderError(409, "Order has failed")
 
-    @coroutine
-    def __process_order_processing__(self, gamespace_id, order, order_info, update_status, account_id, db):
+    async def __process_order_processing__(self, gamespace_id, order, order_info, update_status, account_id, db):
         component_name = order_info.component.name
         component_instance = StoreComponents.component(component_name, order_info.component.data)
 
         try:
-            update = yield component_instance.update_order(
+            update = await component_instance.update_order(
                 self.app, gamespace_id, account_id, order, order_info)
         except StoreComponentError as e:
             logging.exception("Failed to update order", extra={
@@ -553,7 +538,7 @@ class OrdersModel(Model):
 
             if e.update_status:
                 new_status, new_info = e.update_status
-                yield update_status(new_status, new_info)
+                await update_status(new_status, new_info)
 
             raise OrderError(e.code, e.message)
         else:
@@ -567,13 +552,13 @@ class OrdersModel(Model):
 
             new_status, new_info = update
 
-            yield update_status(new_status, new_info)
+            await update_status(new_status, new_info)
 
             item = order_info.item
 
             if order.campaign_id:
                 try:
-                    campaign = yield self.campaigns.get_campaign_item(
+                    campaign = await self.campaigns.get_campaign_item(
                         gamespace_id, order.campaign_id, order.item_id, db)
                 except CampaignItemNotFound:
                     pass
@@ -582,7 +567,7 @@ class OrdersModel(Model):
                 else:
                     item.apply_campaign(campaign)
 
-            raise Return({
+            return {
                 "item": item.name,
                 "amount": order.amount,
                 "currency": order.currency,
@@ -592,10 +577,9 @@ class OrdersModel(Model):
                 "public": item.public_data,
                 "private": item.private_data,
                 "info": order.info
-            })
+            }
 
-    @coroutine
-    def __process_order_succeeded__(self, gamespace_id, order, order_info, update_status, account_id, db):
+    async def __process_order_succeeded__(self, gamespace_id, order, order_info, update_status, account_id, db):
         logging.warning("Processing already succeeded order", extra={
             "gamespace": gamespace_id,
             "order": order.order_id,
@@ -603,8 +587,7 @@ class OrdersModel(Model):
         })
         raise OrderError(409, "Order has been succeeded already")
 
-    @coroutine
-    def __process_order_rejected__(self, gamespace_id, order, order_info, update_status, account_id, db):
+    async def __process_order_rejected__(self, gamespace_id, order, order_info, update_status, account_id, db):
         logging.warning("Processing already rejected order", extra={
             "gamespace": gamespace_id,
             "order": order.order_id,
@@ -612,16 +595,15 @@ class OrdersModel(Model):
         })
         raise OrderError(409, "Order has been rejected already")
 
-    @coroutine
     @validate(gamespace_id="int", store_name="str_name", component_name="str_name",
               arguments="json_dict", headers="json_dict", body="str")
-    def order_callback(self, gamespace_id, store_name, component_name, arguments, headers, body):
+    async def order_callback(self, gamespace_id, store_name, component_name, arguments, headers, body):
         stores = self.app.stores
 
         try:
-            component = yield stores.find_store_name_component(gamespace_id, store_name, component_name)
+            component = await stores.find_store_name_component(gamespace_id, store_name, component_name)
         except StoreError as e:
-            raise OrderError(500, e.message)
+            raise OrderError(500, str(e))
         except StoreComponentNotFound:
             raise OrderError(404, "No such store component")
 
@@ -634,27 +616,26 @@ class OrdersModel(Model):
             raise OrderError(400, "This store component does not allow hooks")
 
         try:
-            result = yield component_instance.order_callback(self.app, gamespace_id, component.store_id,
+            result = await component_instance.order_callback(self.app, gamespace_id, component.store_id,
                                                              arguments, headers, body)
         except StoreComponentError as e:
             logging.exception("Failed to process callback!")
             raise OrderError(e.code, e.message)
 
-        raise Return(result)
+        return result
 
-    @coroutine
     @validate(gamespace_id="int", order_id="int", account_id="int")
-    def update_order(self, gamespace_id, order_id, account_id, order_info=None):
+    async def update_order(self, gamespace_id, order_id, account_id, order_info=None):
 
         application = self.app
 
-        with (yield self.db.acquire(auto_commit=False)) as db:
+        async with self.db.acquire(auto_commit=False) as db:
             if not order_info:
-                order_info = yield self.get_order_info(gamespace_id, order_id, account_id, db=db)
+                order_info = await self.get_order_info(gamespace_id, order_id, account_id, db=db)
 
             try:
                 try:
-                    order_data = yield db.get(
+                    order_data = await db.get(
                         """
                             SELECT *
                             FROM `orders`
@@ -671,14 +652,13 @@ class OrdersModel(Model):
 
                 order = OrderAdapter(order_data)
 
-                @coroutine
-                def update_status(new_status, new_info):
+                async def update_status(new_status, new_info):
 
                     info = order.info or {}
                     info.update(new_info)
                     order.info = info
 
-                    yield db.execute(
+                    await db.execute(
                         """
                             UPDATE `orders`
                             SET `order_status`=%s, `order_info`=%s
@@ -695,24 +675,23 @@ class OrdersModel(Model):
                 if order_status not in OrdersModel.ORDER_PROCESSORS:
                     raise OrderError(406, "Order is in bad condition")
 
-                update = yield OrdersModel.ORDER_PROCESSORS[order_status](
+                update = await OrdersModel.ORDER_PROCESSORS[order_status](
                     self, gamespace_id, order, order_info, update_status, account_id, db=db)
 
-                raise Return(update)
+                return update
 
             finally:
-                yield db.commit()
+                await db.commit()
 
-    @coroutine
     @validate(gamespace_id="int", account_id="int")
-    def update_orders(self, gamespace_id, account_id):
+    async def update_orders(self, gamespace_id, account_id):
 
-        with (yield self.db.acquire()) as db:
+        async with self.db.acquire() as db:
 
             order_statuses = [OrdersModel.STATUS_CREATED, OrdersModel.STATUS_APPROVED, OrdersModel.STATUS_RETRY]
 
             try:
-                orders_data = yield db.query(
+                orders_data = await db.query(
                     """
                         SELECT `store_components`.*, `items`.*, `stores`.*, `orders`.`order_id`
                         FROM `orders`, `store_components`, `items`, `stores`
@@ -742,7 +721,7 @@ class OrdersModel(Model):
                     continue
 
                 try:
-                    update_result = yield self.update_order(
+                    update_result = await self.update_order(
                         gamespace_id, order_id, account_id, order_info=info)
                 except OrderError:
                     pass
@@ -751,7 +730,7 @@ class OrdersModel(Model):
                 else:
                     update.append(update_result)
 
-            raise Return(update)
+            return update
 
     ORDER_PROCESSORS = {
         STATUS_ERROR: __process_order_error__,

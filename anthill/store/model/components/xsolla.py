@@ -1,17 +1,17 @@
-from tornado.gen import coroutine, Return
-from tornado.httpclient import AsyncHTTPClient, HTTPRequest, HTTPError
+
+from tornado.httpclient import AsyncHTTPClient
 
 from . import StoreComponent, StoreComponents, StoreComponentError
 
 from ..order import OrdersModel, OrderError
 
-from common import to_int
-from common.social import APIError
-from common.internal import Internal, InternalError
+from anthill.common import to_int
+from anthill.common.social import APIError
+from anthill.common.internal import Internal, InternalError
 
 import logging
 
-import urllib
+from urllib import parse
 import ujson
 import hashlib
 
@@ -51,17 +51,15 @@ class XsollaStoreComponent(StoreComponent):
     def is_hook_applicable(self):
         return True
 
-    @coroutine
-    def update_order(self, app, gamespace_id, account_id, order, order_info):
+    async def update_order(self, app, gamespace_id, account_id, order, order_info):
 
         if order.status != OrdersModel.STATUS_APPROVED:
             raise StoreComponentError(409, "Order is not approved")
 
         result = (OrdersModel.STATUS_SUCCEEDED, {})
-        raise Return(result)
+        return result
 
-    @coroutine
-    def order_callback(self, app, gamespace_id, store_id, arguments, headers, body_str):
+    async def order_callback(self, app, gamespace_id, store_id, arguments, headers, body_str):
 
         if body_str is None:
             raise StoreComponentError(400, {
@@ -115,7 +113,7 @@ class XsollaStoreComponent(StoreComponent):
 
         xsolla_api = app.xsolla_api
 
-        private_key = yield xsolla_api.get_private_key(gamespace_id)
+        private_key = await xsolla_api.get_private_key(gamespace_id)
 
         merchant_id = private_key.merchant_id
         project_key = private_key.project_key
@@ -150,16 +148,15 @@ class XsollaStoreComponent(StoreComponent):
                 }
             })
 
-        result = yield notification_type(app, gamespace_id, store_id, arguments, headers, body)
-        raise Return(result)
+        result = await notification_type(app, gamespace_id, store_id, arguments, headers, body)
+        return result
 
-    @coroutine
-    def new_order(self, app, gamespace_id, account_id, order_id, currency,
+    async def new_order(self, app, gamespace_id, account_id, order_id, currency,
                   price, amount, total, store, item, env, campaign_item):
 
         xsolla_api = app.xsolla_api
 
-        private_key = yield xsolla_api.get_private_key(gamespace_id)
+        private_key = await xsolla_api.get_private_key(gamespace_id)
 
         merchant_id = private_key.merchant_id
         api_key = private_key.api_key
@@ -207,7 +204,7 @@ class XsollaStoreComponent(StoreComponent):
             arguments["settings"]["mode"] = "sandbox"
 
         try:
-            response = yield xsolla_api.api_post("token", merchant_id, api_key, **arguments)
+            response = await xsolla_api.api_post("token", merchant_id, api_key, **arguments)
         except APIError as e:
             raise StoreComponentError(e.code, e.body)
 
@@ -216,19 +213,18 @@ class XsollaStoreComponent(StoreComponent):
         if not token:
             raise StoreComponentError(500, "No token is returned")
 
-        url = app.get_host() + "/front/xsolla?" + urllib.urlencode({
+        url = app.get_host() + "/front/xsolla?" + parse.urlencode({
             "access_token": token,
             "sandbox": self.sandbox
         })
 
-        raise Return({
+        return {
             "token": token,
             "sandbox": True if self.sandbox == "true" else False,
             "url": url
-        })
+        }
 
-    @coroutine
-    def __notification_payment__(self, app, gamespace_id, store_id, arguments, headers, body):
+    async def __notification_payment__(self, app, gamespace_id, store_id, arguments, headers, body):
 
         logging.info("__notification_payment__: {0} {1} {2} {3} {4}".format(
             gamespace_id, store_id, ujson.dumps(arguments), ujson.dumps(headers), ujson.dumps(body)))
@@ -277,7 +273,7 @@ class XsollaStoreComponent(StoreComponent):
 
         if dry_run:
             try:
-                yield orders.update_order_info(
+                await orders.update_order_info(
                     gamespace_id, order_id, OrdersModel.STATUS_APPROVED,
                     {
                         "transaction_id": transaction_id
@@ -293,7 +289,7 @@ class XsollaStoreComponent(StoreComponent):
                 result = True
         else:
             try:
-                result = yield orders.update_order_status_reliable(
+                result = await orders.update_order_status_reliable(
                     gamespace_id, order_id, OrdersModel.STATUS_CREATED, OrdersModel.STATUS_APPROVED,
                     {
                         "transaction_id": transaction_id
@@ -314,12 +310,11 @@ class XsollaStoreComponent(StoreComponent):
                 }
             })
 
-        raise Return({
+        return {
             "status": "OK"
-        })
+        }
 
-    @coroutine
-    def __notification_user_validation__(self, app, gamespace_id, store_id, arguments, headers, body):
+    async def __notification_user_validation__(self, app, gamespace_id, store_id, arguments, headers, body):
 
         logging.info("__notification_user_validation__: {0} {1} {2} {3} {4}".format(
             gamespace_id, store_id, ujson.dumps(arguments), ujson.dumps(headers), ujson.dumps(body)))
@@ -345,12 +340,12 @@ class XsollaStoreComponent(StoreComponent):
             })
 
         try:
-            result = yield self.internal.request("login", "check_account_exists", account=str(account))
+            result = await self.internal.request("login", "check_account_exists", account=str(account))
         except InternalError as e:
             raise StoreComponentError(500, {
                 "error": {
                     "code": "INTERNAL_ERROR",
-                    "message": e.message
+                    "message": str(e)
                 }
             })
 
@@ -362,9 +357,9 @@ class XsollaStoreComponent(StoreComponent):
                 }
             })
 
-        raise Return({
+        return {
             "status": "OK"
-        })
+        }
 
 
 StoreComponents.register_component("xsolla", XsollaStoreComponent)

@@ -1,12 +1,12 @@
-from tornado.gen import coroutine, Return
+
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest, HTTPError
 
 from . import StoreComponent, StoreComponents, StoreComponentError
-from ..order import OrdersModel
+from .. order import OrdersModel
 
-from common.social import steam
+from anthill.common.social import steam
 
-import urllib
+from urllib import parse
 import ujson
 import logging
 
@@ -57,16 +57,15 @@ class SteamStoreComponent(StoreComponent):
     def get_api(self, app):
         return app.steam_api
 
-    @coroutine
-    def update_order(self, app, gamespace_id, account_id, order, order_info):
+    async def update_order(self, app, gamespace_id, account_id, order, order_info):
 
         if order.status == OrdersModel.STATUS_APPROVED:
             result = (OrdersModel.STATUS_SUCCEEDED, {})
-            raise Return(result)
+            return result
 
         order_id = order.order_id
 
-        private_key = yield self.get_api(app).get_private_key(gamespace_id)
+        private_key = await self.get_api(app).get_private_key(gamespace_id)
 
         arguments = {
             "orderid": order_id,
@@ -77,10 +76,10 @@ class SteamStoreComponent(StoreComponent):
         request = HTTPRequest(
             url=self.__url__() + "/FinalizeTxn/" + self.update_tx_version,
             method="POST",
-            body=urllib.urlencode(arguments))
+            body=parse.urlencode(arguments))
 
         try:
-            response = yield self.client.fetch(request)
+            response = await self.client.fetch(request)
         except HTTPError as e:
             if e.code == 400:
                 raise StoreComponentError(
@@ -146,11 +145,10 @@ class SteamStoreComponent(StoreComponent):
             "transaction_id": transaction_id
         })
 
-        raise Return(result)
+        return result
 
     # noinspection SpellCheckingInspection
-    @coroutine
-    def new_order(self, app, gamespace_id, account_id, order_id, currency,
+    async def new_order(self, app, gamespace_id, account_id, order_id, currency,
                   price, amount, total, store, item, env, campaign_item):
 
         steam_id = env.get("steam_id")
@@ -163,7 +161,7 @@ class SteamStoreComponent(StoreComponent):
         if amount > SteamStoreComponent.PURCHASE_AMOUNT_LIMIT:
             raise StoreComponentError(400, "Amount limit is reached")
 
-        private_key = yield self.get_api(app).get_private_key(gamespace_id)
+        private_key = await self.get_api(app).get_private_key(gamespace_id)
 
         language = env.get("language", "EN")
         description = item.description(language)
@@ -191,17 +189,17 @@ class SteamStoreComponent(StoreComponent):
             arguments["category[0]"] = category
 
         arguments = {
-            k: unicode(v).encode("UTF-8")
-            for k, v in arguments.iteritems()
+            k: str(v).encode("utf-8")
+            for k, v in arguments.items()
         }
 
         request = HTTPRequest(
             url=self.__url__() + "/InitTxn/" + self.init_tx_version,
             method="POST",
-            body=urllib.urlencode(arguments))
+            body=parse.urlencode(arguments))
 
         try:
-            response = yield self.client.fetch(request)
+            response = await self.client.fetch(request)
         except HTTPError as e:
             raise StoreComponentError(e.code, e.message)
 
@@ -230,9 +228,9 @@ class SteamStoreComponent(StoreComponent):
         if not transaction_id:
             raise StoreComponentError(412, "No TransactionID")
 
-        raise Return({
+        return {
             "transaction_id": transaction_id
-        })
+        }
 
 
 StoreComponents.register_component("steam", SteamStoreComponent)
