@@ -7,6 +7,9 @@ DEPENDENCIES = [
 
 setup(
     name='anthill-store',
+    package_data={
+      "anthill.store": ["anthill/store/sql", "anthill/store/static"]
+    },
     setup_requires=["pypigit-version"],
     git_version="0.1.0",
     description='Monetization service for Anthill platform',
