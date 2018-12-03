@@ -325,7 +325,7 @@ class StoreModel(Model):
         except DatabaseError as e:
             raise StoreError("Failed to list store components: " + e.args[1])
         else:
-            return map(StoreComponentAdapter, result)
+            return list(map(StoreComponentAdapter, result))
 
     @validate(gamespace_id="int")
     async def list_stores(self, gamespace_id):
@@ -335,7 +335,7 @@ class StoreModel(Model):
             WHERE `gamespace_id`=%s;
         """, gamespace_id)
 
-        return map(StoreAdapter, result)
+        return list(map(StoreAdapter, result))
 
     @validate(gamespace_id="int", store_name="str_name", campaign_scheme="json_dict")
     async def new_store(self, gamespace_id, store_name, campaign_scheme):

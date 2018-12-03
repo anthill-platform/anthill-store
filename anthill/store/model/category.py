@@ -116,7 +116,7 @@ class CategoryModel(Model):
         except DatabaseError as e:
             raise CategoryError("Failed to list categories: " + e.args[1])
 
-        return map(CategoryAdapter, result)
+        return list(map(CategoryAdapter, result))
 
     @validate(gamespace_id="int", category_name="str",
               category_public_item_scheme="json_dict",

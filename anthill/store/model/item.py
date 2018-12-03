@@ -153,7 +153,7 @@ class ItemModel(Model):
         except DatabaseError as e:
             raise ItemError("Failed to find store data: " + e.args[1])
 
-        return map(ItemTierCategoryAdapter, result)
+        return list(map(ItemTierCategoryAdapter, result))
 
     @validate(gamespace_id="int", store_id="int")
     async def list_enabled_items(self, gamespace_id, store_id, db=None):
@@ -183,7 +183,7 @@ class ItemModel(Model):
         except DatabaseError as e:
             raise ItemError("Failed to find store data: " + e.args[1])
 
-        return map(ItemTierCategoryAdapter, result)
+        return list(map(ItemTierCategoryAdapter, result))
 
     @validate(gamespace_id="int", store_id="int", category_id="int", item_name="str",
               item_enabled="bool", item_public_data="json", item_private_data="json", item_tier="int")

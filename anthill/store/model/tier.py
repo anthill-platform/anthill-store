@@ -84,7 +84,7 @@ class CurrencyModel(Model):
         except DatabaseError as e:
             raise CurrencyError("Failed to list currencies: " + e.args[1])
 
-        return map(CurrencyAdapter, result)
+        return list(map(CurrencyAdapter, result))
 
     async def new_currency(self, gamespace_id, currency_name, currency_title, currency_format,
                      currency_symbol, currency_label):
@@ -247,7 +247,7 @@ class TierModel(Model):
         except DatabaseError as e:
             raise TierError("Failed to list tier components: " + e.args[1])
         else:
-            return map(TierComponentAdapter, result)
+            return list(map(TierComponentAdapter, result))
 
     async def list_tiers(self, gamespace_id, store_id, db=None):
         try:
@@ -259,7 +259,7 @@ class TierModel(Model):
         except DatabaseError as e:
             raise TierError("Failed to delete list tiers: " + e.args[1])
 
-        return map(TierAdapter, result)
+        return list(map(TierAdapter, result))
 
     @validate(gamespace_id="int", store_id="int", tier_name="str_name", tier_title="str", tier_product="str",
               tier_prices="json_dict_of_ints")

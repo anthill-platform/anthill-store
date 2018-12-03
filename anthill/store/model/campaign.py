@@ -269,7 +269,7 @@ class CampaignsModel(Model):
         except DatabaseError as e:
             raise CampaignError(500, "Failed to list campaign items: " + e.args[1])
         else:
-            return map(CampaignTierStoreItemAdapter, campaign_items)
+            return list(map(CampaignTierStoreItemAdapter, campaign_items))
 
     @validate(gamespace_id="int", store_id="int", item_id="int")
     async def find_current_campaign_item(self, gamespace_id, store_id, item_id, db=None):
@@ -352,7 +352,7 @@ class CampaignsModel(Model):
         except DatabaseError as e:
             raise CampaignError(500, "Failed to list campaign items: " + e.args[1])
         else:
-            return map(CampaignItemCampaignAdapter, campaign_items)
+            return list(map(CampaignItemCampaignAdapter, campaign_items))
 
     @validate(gamespace_id="int", campaign_id="int", item_id="int")
     async def get_campaign_item(self, gamespace_id, campaign_id, item_id, db=None):
