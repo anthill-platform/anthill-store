@@ -199,7 +199,7 @@ class InternalHandler(object):
         except ValidationError as e:
             raise InternalError(400, e.message)
 
-        raise {
+        return {
             "store": store_data
         }
 
