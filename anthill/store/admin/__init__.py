@@ -1,7 +1,7 @@
 from anthill.common.validate import validate
 
+from anthill.common import update as common_update, to_int
 import anthill.common.admin as a
-from anthill import common
 
 from .. model.store import StoreError, StoreNotFound, StoreComponentNotFound
 from .. model.category import CategoryError, CategoryNotFound, CategoryModel
@@ -928,8 +928,8 @@ class NewStoreItemController(a.AdminController):
         public_item_scheme = category.public_item_scheme
         private_item_scheme = category.private_item_scheme
 
-        common.update(public_item_scheme, common_public_item_scheme)
-        common.update(private_item_scheme, common_private_item_scheme)
+        common_update(public_item_scheme, common_public_item_scheme)
+        common_update(private_item_scheme, common_private_item_scheme)
 
         data = {
             "category_name": category.name,
@@ -1010,11 +1010,11 @@ class NewStoreTierController(a.AdminController):
         except StoreNotFound:
             raise a.ActionError("No such store")
 
-        raise a.Return({
+        return {
             "store_name": store.name,
             "currencies": (await currencies.list_currencies(self.gamespace)),
             "tier_prices": {}
-        })
+        }
 
     def render(self, data):
         return [
@@ -1214,10 +1214,10 @@ class StoreItemController(a.AdminController):
         public_item_scheme = category.public_item_scheme
         private_item_scheme = category.private_item_scheme
 
-        common.update(public_item_scheme, common_public_item_scheme)
-        common.update(private_item_scheme, common_private_item_scheme)
+        common_update(public_item_scheme, common_public_item_scheme)
+        common_update(private_item_scheme, common_private_item_scheme)
 
-        raise a.Return({
+        return {
             "category_name": category.name,
             "category_id": category_id,
             "store_name": store.name,
@@ -1230,7 +1230,7 @@ class StoreItemController(a.AdminController):
             "tiers_list": {tier.tier_id: u"{0} ({1})".format(tier.title, tier.name) for tier in tiers_list},
             "item_tier": item.tier,
             "store_id": store_id
-        })
+        }
 
     def render(self, data):
 
@@ -1333,7 +1333,7 @@ class StoreTierController(a.AdminController):
         try:
             await tiers.update_tier_component(self.gamespace, tier_id, component_id, component_data)
         except StoreError as e:
-            raise a.ActionError("Failed to update tier component: " + e.message)
+            raise a.ActionError("Failed to update tier component: " + str(e))
 
         raise a.Redirect(
             "tier",
@@ -1371,7 +1371,7 @@ class StoreTierController(a.AdminController):
         try:
             await tiers.delete_tier_component(self.gamespace, tier_id, component_id)
         except StoreError as e:
-            raise a.ActionError("Failed to delete tier component: " + e.message)
+            raise a.ActionError("Failed to delete tier component: " + str(e))
 
         raise a.Redirect(
             "tier",
@@ -1400,7 +1400,7 @@ class StoreTierController(a.AdminController):
         try:
             tier_components = await tiers.list_tier_components(self.gamespace, tier_id)
         except StoreError as e:
-            raise a.ActionError("Failed to get store components: " + e.message)
+            raise a.ActionError("Failed to get store components: " + str(e))
 
         components = {}
 
@@ -1410,7 +1410,7 @@ class StoreTierController(a.AdminController):
                 component_admin.load(component.data)
                 components[component.component_id] = component_admin
 
-        raise a.Return({
+        return {
             "store_name": store.name,
             "store_id": store_id,
             "currencies": (await currencies.list_currencies(self.gamespace)),
@@ -1419,7 +1419,7 @@ class StoreTierController(a.AdminController):
             "tier_title": tier.title,
             "tier_product": tier.product,
             "components": components
-        })
+        }
 
     async def get_component(self, component, tier_id):
         try:
@@ -1581,7 +1581,7 @@ class StoreSettingsController(a.AdminController):
         try:
             await stores.update_store_component(self.gamespace, store_id, component_id, component_data)
         except StoreError as e:
-            raise a.ActionError("Failed to update store component: " + e.message)
+            raise a.ActionError("Failed to update store component: " + str(e))
 
         raise a.Redirect(
             "store_settings",
@@ -1611,7 +1611,7 @@ class StoreSettingsController(a.AdminController):
         try:
             await stores.delete_store_component(self.gamespace, store_id, component_id)
         except StoreError as e:
-            raise a.ActionError("Failed to delete store component: " + e.message)
+            raise a.ActionError("Failed to delete store component: " + str(e))
 
         raise a.Redirect(
             "store_settings",
@@ -1631,7 +1631,7 @@ class StoreSettingsController(a.AdminController):
         try:
             store_components = await stores.list_store_components(self.gamespace, store_id)
         except StoreError as e:
-            raise a.ActionError("Failed to get store components: " + e.message)
+            raise a.ActionError("Failed to get store components: " + str(e))
 
         components = {}
 
@@ -1641,11 +1641,11 @@ class StoreSettingsController(a.AdminController):
                 component_admin.load(component.data)
                 components[component.component_id] = component_admin
 
-        raise a.Return({
+        return {
             "store_name": store.name,
             "store_components": components,
             "store_campaign_scheme": store.campaign_scheme or {}
-        })
+        }
 
     async def get_component(self, component, store_id):
         try:
@@ -1906,7 +1906,7 @@ class OrdersController(a.AdminController):
         except CurrencyError as e:
             raise a.ActionError("Failed to list currencies: " + e.message)
 
-        page = common.to_int(page)
+        page = to_int(page)
 
         orders = self.application.orders
 
@@ -2565,8 +2565,8 @@ class NewCampaignItemController(a.AdminController):
             public_item_scheme = category.public_item_scheme
             private_item_scheme = category.private_item_scheme
 
-            common.update(public_item_scheme, common_public_item_scheme)
-            common.update(private_item_scheme, common_private_item_scheme)
+            common_update(public_item_scheme, common_public_item_scheme)
+            common_update(private_item_scheme, common_private_item_scheme)
 
             data = {
                 "store_name": store.name,
@@ -2773,8 +2773,8 @@ class CampaignItemController(a.AdminController):
             public_item_scheme = category.public_item_scheme
             private_item_scheme = category.private_item_scheme
 
-            common.update(public_item_scheme, common_public_item_scheme)
-            common.update(private_item_scheme, common_private_item_scheme)
+            common_update(public_item_scheme, common_public_item_scheme)
+            common_update(private_item_scheme, common_private_item_scheme)
 
             data = {
                 "store_name": store.name,
