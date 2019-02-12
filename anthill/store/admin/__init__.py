@@ -23,7 +23,7 @@ class StoreAdminComponents(object):
 
     @staticmethod
     def components():
-        return StoreAdminComponents.COMPONENTS.keys()
+        return list(StoreAdminComponents.COMPONENTS.keys())
 
     @staticmethod
     def has_component(component_name):
@@ -43,7 +43,7 @@ class TierAdminComponents(object):
 
     @staticmethod
     def components():
-        return TierAdminComponents.COMPONENTS.keys()
+        return list(TierAdminComponents.COMPONENTS.keys())
 
     @staticmethod
     def has_component(component_name):

@@ -64,7 +64,7 @@ class StoreComponents(object):
 
     @staticmethod
     def components():
-        return StoreComponents.COMPONENTS.keys()
+        return list(StoreComponents.COMPONENTS.keys())
 
     @staticmethod
     def has_component(component_name):
@@ -84,7 +84,7 @@ class TierComponents(object):
 
     @staticmethod
     def components():
-        return TierComponents.COMPONENTS.keys()
+        return list(TierComponents.COMPONENTS.keys())
 
     @staticmethod
     def has_component(component_name):
