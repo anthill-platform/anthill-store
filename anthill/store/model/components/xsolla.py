@@ -118,7 +118,7 @@ class XsollaStoreComponent(StoreComponent):
         merchant_id = private_key.merchant_id
         project_key = private_key.project_key
 
-        expected_value = hashlib.sha1(str(body_str) + str(project_key)).hexdigest().lower()
+        expected_value = hashlib.sha1(bytes(str(body_str) + str(project_key), "utf-8")).hexdigest().lower()
 
         if expected_value != signature_value:
             raise StoreComponentError(403, {
