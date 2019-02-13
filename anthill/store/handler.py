@@ -125,7 +125,7 @@ class WebHookHandler(AuthenticatedHandler):
             for key, value in self.request.headers.items()
         }
 
-        body = self.request.body
+        body = str(self.request.body, "utf-8")
 
         try:
             result = await orders.order_callback(gamespace_id, store_name, component_name, arguments, headers, body)
